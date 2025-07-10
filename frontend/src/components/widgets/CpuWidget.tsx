@@ -55,7 +55,7 @@ const CpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
   };
 
   const showPercentage = config.showPercentage !== false;
-  const showCoreUsage = config.showCoreUsage || false;
+  // const showCoreUsage = config.showCoreUsage || false;
   const showTemperature = config.showTemperature || false;
 
   const handleSettingsClick = (e: React.MouseEvent) => {

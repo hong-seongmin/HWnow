@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import type { Layout } from 'react-grid-layout';
-import type { Widget, WidgetType, WidgetConfig, Page, DashboardState } from './types';
+import type { Widget, WidgetType, Page, DashboardState } from './types';
 
 const LOCAL_STORAGE_KEY = 'dashboard-state';
 
@@ -80,7 +80,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       get().actions.saveState();
     },
 
-    addWidget: (type) => {
+    addWidget: (type: WidgetType) => {
       const newWidget: Widget = { i: uuidv4(), type };
       const newLayout: Layout = {
         i: newWidget.i,

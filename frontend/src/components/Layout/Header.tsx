@@ -5,17 +5,17 @@ import { useToast } from '../../contexts/ToastContext';
 import Tooltip from '../common/Tooltip';
 
 export const Header = () => {
-  const { saveLayouts, resetLayouts } = useDashboardStore((state) => state.actions);
+  const { saveState, resetState } = useDashboardStore((state) => state.actions);
   const { showSuccess } = useToast();
 
   const handleSave = () => {
-    saveLayouts();
+    saveState();
     showSuccess('Layout saved successfully!');
   };
 
   const handleReset = () => {
     if (window.confirm('Are you sure you want to reset the layout to default?')) {
-      resetLayouts();
+      resetState();
       showSuccess('Layout has been reset to default.');
     }
   };

@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Widget } from '../../../stores/types';
+// import type { Widget } from '../../../stores/types';
 import './SettingsForm.css';
 
 export interface Threshold {
