@@ -1,0 +1,149 @@
+/* 페이지 컨트롤 컨테이너 */
+.page-controls {
+  padding: var(--spacing-lg);
+  background-color: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+
+/* 페이지 컨트롤 헤더 */
+.page-controls-header {
+  margin-bottom: var(--spacing-lg);
+  text-align: center;
+}
+
+.page-controls-header h2 {
+  margin: 0 0 var(--spacing-xs) 0;
+  font-size: 1.5rem;
+  color: var(--color-text-primary);
+}
+
+.page-controls-header p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+/* 위젯 옵션 그리드 */
+.widget-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--spacing-md);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* 위젯 옵션 버튼 */
+.widget-option-button {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  background-color: var(--color-background);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: left;
+  position: relative;
+  overflow: hidden;
+}
+
+.widget-option-button:hover {
+  border-color: var(--color-primary);
+  background-color: var(--color-surface);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.widget-option-button:active {
+  transform: translateY(0);
+  box-shadow: var(--shadow-sm);
+}
+
+/* 위젯 옵션 아이콘 */
+.widget-option-icon {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--color-surface);
+  border-radius: var(--radius-md);
+  color: var(--color-primary);
+  transition: all var(--transition-fast);
+}
+
+.widget-option-button:hover .widget-option-icon {
+  background-color: var(--color-primary);
+  color: var(--color-text-on-primary);
+  transform: scale(1.1);
+}
+
+/* 위젯 옵션 콘텐츠 */
+.widget-option-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.widget-option-label {
+  font-weight: 600;
+  color: var(--color-text-primary);
+  font-size: 1rem;
+}
+
+.widget-option-description {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+}
+
+/* 위젯 추가 아이콘 */
+.widget-option-add {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--color-primary);
+  color: var(--color-text-on-primary);
+  border-radius: var(--radius-full);
+  opacity: 0;
+  transform: scale(0.8);
+  transition: all var(--transition-fast);
+}
+
+.widget-option-button:hover .widget-option-add {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* 포커스 스타일 */
+.widget-option-button:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-primary);
+}
+
+/* 반응형 디자인 */
+@media (max-width: 768px) {
+  .page-controls {
+    padding: var(--spacing-md);
+  }
+  
+  .widget-options {
+    grid-template-columns: 1fr;
+  }
+  
+  .widget-option-button {
+    padding: var(--spacing-sm);
+  }
+  
+  .widget-option-icon {
+    width: 40px;
+    height: 40px;
+  }
+} 

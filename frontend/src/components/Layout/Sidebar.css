@@ -1,0 +1,61 @@
+/* frontend/src/components/Layout/Sidebar.css */
+.sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  background-color: var(--background-secondary);
+  border-right: 1px solid var(--border-primary);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-header {
+  padding: 20px;
+  text-align: center;
+  border-bottom: 1px solid var(--border-secondary);
+}
+
+.sidebar-logo-img {
+  width: 120px;
+  height: auto;
+}
+
+.sidebar-logo {
+  font-size: 1.8rem;
+  font-weight: bold;
+  color: var(--accent-primary);
+  text-align: center;
+}
+
+.widget-adder {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.widget-adder h3 {
+  font-size: 1.1rem;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--border-primary);
+  padding-bottom: 10px;
+}
+
+.add-widget-button {
+  width: 100%;
+  padding: 10px;
+  font-size: 1rem;
+  background-color: var(--background-interactive);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 5px;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.add-widget-button:hover {
+  background-color: var(--accent-primary);
+  border-color: var(--accent-primary-hover);
+} 
