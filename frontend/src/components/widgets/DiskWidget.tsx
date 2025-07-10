@@ -16,8 +16,11 @@ const DiskWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const diskReadData = useSystemResourceStore((state) => state.data.disk_read);
   const diskWriteData = useSystemResourceStore((state) => state.data.disk_write);
-  const widgets = useDashboardStore((state) => state.widgets);
-  const widget = widgets.find(w => w.i === widgetId);
+
+  const widget = useDashboardStore((state) => {
+    const page = state.pages[state.activePageIndex];
+    return page?.widgets.find((w) => w.i === widgetId);
+  });
   
   const config = widget?.config || {};
   const latestRead = diskReadData.length > 0 ? diskReadData[diskReadData.length - 1] : 0;

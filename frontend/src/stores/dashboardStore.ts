@@ -1,111 +1,162 @@
 import { create } from 'zustand';
-import type { Layout } from 'react-grid-layout';
-import type { Widget, WidgetType, WidgetConfig } from './types';
 import { v4 as uuidv4 } from 'uuid';
+import type { Layout } from 'react-grid-layout';
+import type { Widget, WidgetType, WidgetConfig, Page, DashboardState } from './types';
 
-interface DashboardState {
-  widgets: Widget[];
-  layouts: Layout[];
-  isInitialized: boolean;
-  actions: {
-    initialize: () => void;
-    addWidget: (type: WidgetType) => void;
-    removeWidget: (id: string) => void;
-    updateLayout: (layouts: Layout[]) => void;
-    updateWidgetConfig: (id: string, config: Partial<WidgetConfig>) => void;
-    saveLayouts: () => void;
-    resetLayouts: () => void;
-  };
-}
+const LOCAL_STORAGE_KEY = 'dashboard-state';
 
-const defaultLayouts: Layout[] = [
-  { i: 'cpu-default', x: 0, y: 0, w: 6, h: 2 },
-  { i: 'ram-default', x: 6, y: 0, w: 6, h: 2 },
-];
-
-const defaultWidgets: Widget[] = [
-  { i: 'cpu-default', type: 'cpu' },
-  { i: 'ram-default', type: 'ram' },
-];
-
-const LOCAL_STORAGE_KEY = 'dashboard-layouts';
-
-const validWidgetTypes: WidgetType[] = ['cpu', 'ram', 'disk_read', 'disk_write', 'net_sent', 'net_recv'];
-
-export const useDashboardStore = create<DashboardState>((set, get) => ({
+const createNewPage = (name: string): Page => ({
+  id: uuidv4(),
+  name,
   widgets: [],
   layouts: [],
+});
+
+const defaultPage = createNewPage('Main Page');
+
+const initialState = {
+  pages: [defaultPage],
+  activePageIndex: 0,
+};
+
+export const useDashboardStore = create<DashboardState>((set, get) => ({
+  pages: [defaultPage],
+  activePageIndex: 0,
   isInitialized: false,
+
   actions: {
     initialize: () => {
-      const savedLayoutsData = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (savedLayoutsData) {
+      const savedState = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (savedState) {
         try {
-          const { widgets: parsedWidgets, layouts: parsedLayouts } = JSON.parse(savedLayoutsData);
-
-          const validWidgets = parsedWidgets.filter((widget: Widget) =>
-            validWidgetTypes.includes(widget.type)
-          );
-          
-          const validWidgetIds = new Set(validWidgets.map((w: Widget) => w.i));
-
-          const validLayouts = parsedLayouts.filter((layout: Layout) =>
-            validWidgetIds.has(layout.i)
-          );
-
-          set({ widgets: validWidgets, layouts: validLayouts, isInitialized: true });
+          const { pages, activePageIndex } = JSON.parse(savedState);
+          if (Array.isArray(pages) && pages.length > 0) {
+            set({ pages, activePageIndex, isInitialized: true });
+          } else {
+            set({ ...initialState, isInitialized: true });
+          }
         } catch (error) {
-          console.error("Failed to parse or validate dashboard layout from localStorage", error);
-          set({ widgets: defaultWidgets, layouts: defaultLayouts, isInitialized: true });
+          console.error("Failed to parse dashboard state from localStorage", error);
+          set({ ...initialState, isInitialized: true });
         }
       } else {
-        set({ widgets: defaultWidgets, layouts: defaultLayouts, isInitialized: true });
+        set({ ...initialState, isInitialized: true });
       }
     },
+
+    addPage: () => {
+      const newPage = createNewPage(`Page ${get().pages.length + 1}`);
+      set((state) => ({
+        pages: [...state.pages, newPage],
+        activePageIndex: state.pages.length, // 새로운 페이지로 전환
+      }));
+      get().actions.saveState();
+    },
+
+    removePage: (pageId) => {
+      if (get().pages.length <= 1) {
+        console.warn("Cannot remove the last page.");
+        return;
+      }
+      set((state) => {
+        const newPages = state.pages.filter((page) => page.id !== pageId);
+        const newActiveIndex = Math.max(0, state.activePageIndex - 1);
+        return { pages: newPages, activePageIndex: newActiveIndex };
+      });
+      get().actions.saveState();
+    },
+
+    setActivePageIndex: (index) => {
+      set({ activePageIndex: index });
+      get().actions.saveState();
+    },
+    
+    updatePageName: (pageId, name) => {
+      set(state => ({
+        pages: state.pages.map(page => 
+          page.id === pageId ? { ...page, name } : page
+        )
+      }));
+      get().actions.saveState();
+    },
+
     addWidget: (type) => {
-      const newWidget: Widget = {
-        i: uuidv4(),
-        type,
-      };
+      const newWidget: Widget = { i: uuidv4(), type };
       const newLayout: Layout = {
         i: newWidget.i,
-        x: (get().widgets.length * 6) % 12,
-        y: Infinity, // places it at the bottom
+        x: (get().pages[get().activePageIndex].widgets.length * 6) % 12,
+        y: Infinity,
         w: 6,
         h: 2,
       };
-      set((state) => ({
-        widgets: [...state.widgets, newWidget],
-        layouts: [...state.layouts, newLayout],
-      }));
+
+      set((state) => {
+        const activePage = state.pages[state.activePageIndex];
+        const updatedPage = {
+          ...activePage,
+          widgets: [...activePage.widgets, newWidget],
+          layouts: [...activePage.layouts, newLayout],
+        };
+        const newPages = [...state.pages];
+        newPages[state.activePageIndex] = updatedPage;
+        return { pages: newPages };
+      });
+      get().actions.saveState();
     },
-    removeWidget: (id) => {
-      set((state) => ({
-        widgets: state.widgets.filter((w) => w.i !== id),
-        layouts: state.layouts.filter((l) => l.i !== id),
-      }));
+
+    removeWidget: (widgetId) => {
+      set((state) => {
+        const activePage = state.pages[state.activePageIndex];
+        const updatedPage = {
+          ...activePage,
+          widgets: activePage.widgets.filter((w) => w.i !== widgetId),
+          layouts: activePage.layouts.filter((l) => l.i !== widgetId),
+        };
+        const newPages = [...state.pages];
+        newPages[state.activePageIndex] = updatedPage;
+        return { pages: newPages };
+      });
+      get().actions.saveState();
     },
+
     updateLayout: (layouts) => {
-      set({ layouts });
+      set((state) => {
+        const activePage = state.pages[state.activePageIndex];
+        const updatedPage = { ...activePage, layouts };
+        const newPages = [...state.pages];
+        newPages[state.activePageIndex] = updatedPage;
+        return { pages: newPages };
+      });
+      get().actions.saveState();
     },
-    updateWidgetConfig: (id, config) => {
-      set((state) => ({
-        widgets: state.widgets.map((widget) =>
-          widget.i === id 
-            ? { ...widget, config: { ...widget.config, ...config } }
-            : widget
-        )
-      }));
-      get().actions.saveLayouts();
+    
+    updateWidgetConfig: (widgetId, config) => {
+      set((state) => {
+        const activePage = state.pages[state.activePageIndex];
+        const updatedPage = {
+          ...activePage,
+          widgets: activePage.widgets.map((widget) =>
+            widget.i === widgetId
+              ? { ...widget, config: { ...widget.config, ...config } }
+              : widget
+          ),
+        };
+        const newPages = [...state.pages];
+        newPages[state.activePageIndex] = updatedPage;
+        return { pages: newPages };
+      });
+      get().actions.saveState();
     },
-    saveLayouts: () => {
-      const { widgets, layouts } = get();
-      const dataToSave = JSON.stringify({ widgets, layouts });
-      localStorage.setItem(LOCAL_STORAGE_KEY, dataToSave);
+
+    saveState: () => {
+      const { pages, activePageIndex } = get();
+      const stateToSave = JSON.stringify({ pages, activePageIndex });
+      localStorage.setItem(LOCAL_STORAGE_KEY, stateToSave);
     },
-    resetLayouts: () => {
-      set({ widgets: defaultWidgets, layouts: defaultLayouts });
+
+    resetState: () => {
       localStorage.removeItem(LOCAL_STORAGE_KEY);
+      set({ ...initialState });
     },
   },
 })); 

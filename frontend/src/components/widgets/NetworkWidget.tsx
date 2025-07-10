@@ -16,9 +16,12 @@ const NetworkWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const netSentData = useSystemResourceStore((state) => state.data.net_sent);
   const netRecvData = useSystemResourceStore((state) => state.data.net_recv);
-  const widgets = useDashboardStore((state) => state.widgets);
-  const widget = widgets.find(w => w.i === widgetId);
   
+  const widget = useDashboardStore((state) => {
+    const page = state.pages[state.activePageIndex];
+    return page?.widgets.find((w) => w.i === widgetId);
+  });
+
   const config = widget?.config || {};
   const latestSent = netSentData.length > 0 ? netSentData[netSentData.length - 1] : 0;
   const latestRecv = netRecvData.length > 0 ? netRecvData[netRecvData.length - 1] : 0;

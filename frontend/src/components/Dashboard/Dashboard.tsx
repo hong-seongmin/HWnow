@@ -24,8 +24,12 @@ const widgetMap: { [key in WidgetType]: React.ComponentType<{ widgetId: string; 
 };
 
 const Dashboard = () => {
-  const { layouts, widgets, isInitialized, actions } = useDashboardStore();
+  const { pages, activePageIndex, isInitialized, actions } = useDashboardStore();
   const { showSuccess, showError } = useToast();
+  
+  const activePage = pages[activePageIndex];
+  const layouts = activePage?.layouts || [];
+  const widgets = activePage?.widgets || [];
 
   useEffect(() => {
     if (!isInitialized) {
@@ -35,8 +39,7 @@ const Dashboard = () => {
 
   const handleLayoutChange = (newLayout: Layout[]) => {
     actions.updateLayout(newLayout);
-    // This action will be debounced in a real-world scenario
-    actions.saveLayouts();
+    // saveState는 updateLayout 내부에서 호출됩니다.
   };
 
   const handleRemoveWidget = (widgetId: string) => {
@@ -44,7 +47,6 @@ const Dashboard = () => {
     const widgetName = widget ? widget.type.replace(/_/g, ' ').toUpperCase() : 'Widget';
     try {
       actions.removeWidget(widgetId);
-      actions.saveLayouts();
       showSuccess(`${widgetName} widget removed`);
     } catch (error) {
       showError(`Failed to remove ${widgetName} widget`);
@@ -64,7 +66,7 @@ const Dashboard = () => {
     return <div className="dashboard-loading">Loading Dashboard...</div>;
   }
   
-  if (widgets.length === 0) {
+  if (!activePage || widgets.length === 0) {
     return (
       <div className="empty-dashboard">
         <h3>Dashboard is empty</h3>

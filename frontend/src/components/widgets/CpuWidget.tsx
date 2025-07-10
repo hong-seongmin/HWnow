@@ -14,8 +14,11 @@ interface WidgetProps {
 const CpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const cpuData = useSystemResourceStore((state) => state.data.cpu);
-  const widgets = useDashboardStore((state) => state.widgets);
-  const widget = widgets.find(w => w.i === widgetId);
+
+  const widget = useDashboardStore((state) => {
+    const page = state.pages[state.activePageIndex];
+    return page?.widgets.find(w => w.i === widgetId);
+  });
   
   const config = widget?.config || {};
   const latestValue = cpuData.length > 0 ? cpuData[cpuData.length - 1] : 0;

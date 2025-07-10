@@ -3,6 +3,7 @@ import { BrowserRouter as Router } from 'react-router-dom'
 import Dashboard from './components/Dashboard/Dashboard'
 import { PageControls } from './components/PageControls'
 import { Header } from './components/Layout/Header'
+import { PageTabs } from './components/common/PageTabs'
 import ToastContainer from './components/common/ToastContainer'
 import Onboarding from './components/common/Onboarding'
 import SupportLinks from './components/common/SupportLinks'
@@ -78,6 +79,7 @@ function AppContent() {
   return (
     <div className="App">
       <Header />
+      <PageTabs />
       <PageControls />
       <main>
         <Dashboard />

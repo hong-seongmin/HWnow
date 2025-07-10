@@ -36,18 +36,26 @@ export interface Page {
   id: string;
   name: string;
   widgets: Widget[];
+  layouts: Layout[];
 }
 
 export interface DashboardState {
   pages: Page[];
   activePageIndex: number;
+  isInitialized: boolean;
   actions: {
-    addPage: (name: string) => void;
+    initialize: () => void;
+    addPage: () => void;
     removePage: (pageId: string) => void;
     setActivePageIndex: (index: number) => void;
-    addWidget: (pageId: string, type: WidgetType) => void;
-    removeWidget: (pageId: string, widgetId: string) => void;
-    updateLayout: (pageId: string, layouts: Layout[]) => void;
-    setInitialState: (layouts: Layout[], widgets: Widget[]) => void;
+    updatePageName: (pageId: string, name: string) => void;
+    
+    addWidget: (type: WidgetType) => void;
+    removeWidget: (widgetId: string) => void;
+    updateLayout: (layouts: Layout[]) => void;
+    updateWidgetConfig: (widgetId: string, config: Partial<WidgetConfig>) => void;
+    
+    saveState: () => void;
+    resetState: () => void;
   };
 } 

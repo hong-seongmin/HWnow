@@ -14,8 +14,11 @@ interface WidgetProps {
 const MemoryWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const ramData = useSystemResourceStore((state) => state.data.ram);
-  const widgets = useDashboardStore((state) => state.widgets);
-  const widget = widgets.find(w => w.i === widgetId);
+
+  const widget = useDashboardStore((state) => {
+    const page = state.pages[state.activePageIndex];
+    return page?.widgets.find((w) => w.i === widgetId);
+  });
   
   const config = widget?.config || {};
   const latestValue = ramData.length > 0 ? ramData[ramData.length - 1] : 0;
