@@ -83,7 +83,7 @@ const Dashboard = () => {
       onLayoutChange={handleLayoutChange}
       draggableHandle=".widget-header"
       draggableCancel=".widget-action-button, .remove-widget-button"
-      compactType="vertical"
+      compactType={null}
       preventCollision={false}
       resizeHandles={['se', 'sw', 'ne', 'nw']}
       isResizable={true}
