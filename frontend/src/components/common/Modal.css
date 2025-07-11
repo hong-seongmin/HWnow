@@ -43,6 +43,9 @@
 
 .modal-body {
   margin-bottom: 20px;
+  max-height: 15vh;
+  overflow-y: auto;
+  padding-right: 10px; /* For scrollbar */
 }
 
 .modal-footer {
