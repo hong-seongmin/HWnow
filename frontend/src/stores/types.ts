@@ -1,6 +1,7 @@
 import type { Layout } from 'react-grid-layout';
 
-export type WidgetType = 'cpu' | 'ram' | 'disk_read' | 'disk_write' | 'net_sent' | 'net_recv';
+// Widget types
+export type WidgetType = 'cpu' | 'ram' | 'disk_read' | 'disk_write' | 'net_sent' | 'net_recv' | 'cpu_temp';
 
 // 위젯 설정 타입
 export interface WidgetConfig {
@@ -23,6 +24,7 @@ export interface WidgetState {
   widgetId: string;
   widgetType: WidgetType;
   config: string; // JSON string for widget-specific config
+  layout?: string; // JSON string for layout info
 }
 
 // 프론트엔드에서 사용하는 위젯 객체

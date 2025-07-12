@@ -55,8 +55,6 @@ const CpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
   };
 
   const showPercentage = config.showPercentage !== false;
-  // const showCoreUsage = config.showCoreUsage || false;
-  const showTemperature = config.showTemperature || false;
 
   const handleSettingsClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -140,12 +138,6 @@ const CpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
               <span className="widget-info-label">Threads:</span>
               <span className="widget-info-value" aria-label="16 threads">16</span>
             </div>
-            {showTemperature && (
-              <div className="widget-info-item">
-                <span className="widget-info-label">Temp:</span>
-                <span className="widget-info-value">45°C</span>
-              </div>
-            )}
           </div>
           
           <div className="widget-chart" role="img" aria-label="CPU usage trend chart">

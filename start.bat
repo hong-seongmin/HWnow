@@ -1,4 +1,15 @@
-@echo on
+@echo off
+
+:: ===================================================================
+::  Administrator Check
+:: ===================================================================
+>nul 2>&1 "%SYSTEMROOT%\\system32\\cacls.exe" "%SYSTEMROOT%\\system32\\config\\system"
+if '%errorlevel%' NEQ '0' (
+    echo Requesting administrative privileges...
+    powershell -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+    exit /b
+)
+
 TITLE HWnow Launcher
 
 :: ===================================================================
@@ -24,18 +35,30 @@ echo.
 @echo off
 
 :: ===================================================================
-::  2. Check for and install frontend dependencies
+::  2. Clean and install frontend dependencies
 :: ===================================================================
-echo [2/4] Checking for frontend dependencies...
-if not exist "frontend\\node_modules" (
-    echo      -> Installing dependencies...
-    call npm install --prefix frontend
-    if errorlevel 1 (
-        echo [ERROR] Failed to install dependencies.
-        pause
-        exit /b
-    )
+echo [2/4] Cleaning and installing frontend dependencies...
+
+:: Change to the project directory to ensure correct paths
+cd /d "%~dp0"
+
+echo      -> Cleaning npm cache...
+call npm cache clean --force >nul 2>&1
+
+echo      -> Removing old node_modules and package-lock.json...
+if exist "frontend\node_modules" rmdir /s /q "frontend\node_modules"
+if exist "frontend\package-lock.json" del /f /q "frontend\package-lock.json"
+
+echo      -> Installing dependencies...
+cd frontend
+call npm install
+if errorlevel 1 (
+    echo [ERROR] Failed to install dependencies.
+    cd ..
+    pause
+    exit /b
 )
+cd ..
 echo      ...Done
 echo.
 
@@ -76,7 +99,6 @@ echo.
 ::  Start Application
 :: ===================================================================
 echo Starting HWnow...
-start "HWnow" .\\HWnow.exe
 
 echo.
 echo ===================================================================
@@ -84,9 +106,13 @@ echo.
 echo      HWnow is running.
 echo      Access it at: http://localhost:8080
 echo.
-echo      This window will close automatically.
+echo      To stop the server, press Ctrl+C in this window.
 echo.
 echo ===================================================================
 
-timeout /t 5 >nul
-exit 
+call .\\HWnow.exe
+
+echo.
+echo ===================================================================
+echo Server has been stopped or an error occurred.
+pause 

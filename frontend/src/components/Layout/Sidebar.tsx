@@ -13,6 +13,7 @@ const Sidebar = () => {
       <div className="widget-adder">
         <h3>Add Widget</h3>
         <button className="add-widget-button" onClick={() => addWidget('cpu')}>CPU</button>
+        <button className="add-widget-button" onClick={() => addWidget('cpu_temp')}>CPU Temperature</button>
         <button className="add-widget-button" onClick={() => addWidget('ram')}>RAM</button>
         <button className="add-widget-button" onClick={() => addWidget('disk_read')}>Disk</button>
         <button className="add-widget-button" onClick={() => addWidget('net_sent')}>Network</button>

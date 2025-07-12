@@ -172,11 +172,11 @@ const NetworkWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
               ) : (
                 <AreaChart data={chartData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="netSentGradient" x1="0" y1="0" x2="0" y2="1">
+                    <linearGradient id={`netSentGradient-${widgetId}`} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor={config.color || "var(--color-info)"} stopOpacity={0.8}/>
                       <stop offset="95%" stopColor={config.color || "var(--color-info)"} stopOpacity={0.1}/>
                     </linearGradient>
-                    <linearGradient id="netRecvGradient" x1="0" y1="0" x2="0" y2="1">
+                    <linearGradient id={`netRecvGradient-${widgetId}`} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="var(--color-success)" stopOpacity={0.8}/>
                       <stop offset="95%" stopColor="var(--color-success)" stopOpacity={0.1}/>
                     </linearGradient>
@@ -193,8 +193,8 @@ const NetworkWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
                       color: 'var(--color-text-primary)'
                     }}
                   />
-                  <Area type="monotone" dataKey="sent" stroke={config.color || "var(--color-info)"} fill="url(#netSentGradient)" name="Sent" />
-                  <Area type="monotone" dataKey="received" stroke="var(--color-success)" fill="url(#netRecvGradient)" name="Received" />
+                  <Area type="monotone" dataKey="sent" stroke={config.color || "var(--color-info)"} fill={`url(#netSentGradient-${widgetId})`} name="Sent" />
+                  <Area type="monotone" dataKey="received" stroke="var(--color-success)" fill={`url(#netRecvGradient-${widgetId})`} name="Received" />
                 </AreaChart>
               )}
             </ResponsiveContainer>

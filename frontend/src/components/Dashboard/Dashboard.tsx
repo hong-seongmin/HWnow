@@ -3,6 +3,7 @@ import { Responsive, WidthProvider } from 'react-grid-layout';
 import type { Layout } from 'react-grid-layout';
 import { useDashboardStore } from '../../stores/dashboardStore';
 import CpuWidget from '../widgets/CpuWidget';
+import CpuTempWidget from '../widgets/CpuTempWidget';
 import MemoryWidget from '../widgets/MemoryWidget';
 import DiskWidget from '../widgets/DiskWidget';
 import NetworkWidget from '../widgets/NetworkWidget';
@@ -16,6 +17,7 @@ const ResponsiveGridLayout = WidthProvider(Responsive);
 
 const widgetMap: { [key in WidgetType]: React.ComponentType<{ widgetId: string; onRemove: () => void }> } = {
   cpu: CpuWidget,
+  cpu_temp: CpuTempWidget,
   ram: MemoryWidget,
   disk_read: DiskWidget,
   disk_write: DiskWidget, // Both disk metrics use the same component
@@ -86,7 +88,7 @@ const Dashboard = () => {
       draggableHandle=".widget-header"
       draggableCancel=".widget-action-button, .remove-widget-button"
       compactType={null}
-      preventCollision={false}
+      preventCollision={true}
       resizeHandles={['se', 'sw', 'ne', 'nw']}
       isResizable={true}
       isDraggable={true}

@@ -1,86 +1,41 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
 	"io/ioutil"
-	"log"
+	"monitoring-app/db"
 	"net/http"
 
-	"monitoring-app/db"
+	"github.com/gorilla/mux"
 )
 
-type DashboardLayoutRequest struct {
-	UserID     string          `json:"userId"`
-	LayoutJSON json.RawMessage `json:"layout"`
+// Handler는 API 핸들러들의 의존성을 관리합니다.
+type Handler struct {
+	DB *sql.DB
 }
 
-// GetLayoutHandler는 대시보드 레이아웃을 조회하는 HTTP 핸들러입니다.
-func GetLayoutHandler(w http.ResponseWriter, r *http.Request) {
+// NewHandler는 새로운 Handler 인스턴스를 생성합니다.
+func NewHandler(db *sql.DB) *Handler {
+	return &Handler{DB: db}
+}
+
+// RegisterRoutes는 mux 라우터에 API 경로들을 등록합니다.
+func RegisterRoutes(r *mux.Router, h *Handler) {
+	r.HandleFunc("/api/widgets", h.GetWidgetsHandler).Methods("GET")
+	r.HandleFunc("/api/widgets", h.SaveWidgetsHandler).Methods("POST")
+	r.HandleFunc("/api/widgets", h.DeleteWidgetHandler).Methods("DELETE")
+}
+
+// GetWidgetsHandler는 여러 위젯의 상태를 한번에 조회합니다.
+func (h *Handler) GetWidgetsHandler(w http.ResponseWriter, r *http.Request) {
 	userID := r.URL.Query().Get("userId")
 	if userID == "" {
 		http.Error(w, "userId is required", http.StatusBadRequest)
 		return
 	}
 
-	layout, err := db.GetLayout(userID)
-	if err != nil {
-		log.Printf("ERROR: Failed to get layout for user '%s': %v", userID, err)
-		http.Error(w, "Failed to get layout", http.StatusInternalServerError)
-		return
-	}
-
-	if layout == "" {
-		layout = "[]" // 기본값으로 빈 배열 반환
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(layout))
-}
-
-// SaveLayoutHandler는 대시보드 레이아웃을 저장하는 HTTP 핸들러입니다.
-func SaveLayoutHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
-		return
-	}
-	defer r.Body.Close()
-
-	var req DashboardLayoutRequest
-	if err := json.Unmarshal(body, &req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	if req.UserID == "" || len(req.LayoutJSON) == 0 {
-		http.Error(w, "userId and layout are required", http.StatusBadRequest)
-		return
-	}
-
-	err = db.SaveLayout(req.UserID, string(req.LayoutJSON))
-	if err != nil {
-		http.Error(w, "Failed to save layout", http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Layout saved successfully"))
-}
-
-// GetWidgetsHandler는 특정 사용자의 모든 위젯 상태를 조회합니다.
-func GetWidgetsHandler(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("userId")
-	if userID == "" {
-		http.Error(w, "userId is required", http.StatusBadRequest)
-		return
-	}
-
-	widgets, err := db.GetWidgets(userID)
+	widgets, err := db.GetWidgets(h.DB, userID)
 	if err != nil {
 		http.Error(w, "Failed to get widgets", http.StatusInternalServerError)
 		return
@@ -95,7 +50,7 @@ func GetWidgetsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // SaveWidgetsHandler는 여러 위젯의 상태를 한번에 저장(upsert)합니다.
-func SaveWidgetsHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) SaveWidgetsHandler(w http.ResponseWriter, r *http.Request) {
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
@@ -115,7 +70,7 @@ func SaveWidgetsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := db.SaveWidgets(widgets); err != nil {
+	if err := db.SaveWidgets(h.DB, widgets); err != nil {
 		http.Error(w, "Failed to save widgets", http.StatusInternalServerError)
 		return
 	}
@@ -124,12 +79,7 @@ func SaveWidgetsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // DeleteWidgetHandler는 특정 위젯을 DB에서 삭제합니다.
-func DeleteWidgetHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete {
-		http.Error(w, "Only DELETE method is allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
+func (h *Handler) DeleteWidgetHandler(w http.ResponseWriter, r *http.Request) {
 	userID := r.URL.Query().Get("userId")
 	widgetID := r.URL.Query().Get("widgetId")
 
@@ -138,7 +88,7 @@ func DeleteWidgetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := db.DeleteWidget(userID, widgetID); err != nil {
+	if err := db.DeleteWidget(h.DB, userID, widgetID); err != nil {
 		http.Error(w, "Failed to delete widget", http.StatusInternalServerError)
 		return
 	}

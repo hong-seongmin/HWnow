@@ -1,9 +1,30 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import type { Layout } from 'react-grid-layout';
-import type { Widget, WidgetType, Page, DashboardState } from './types';
+import type { Widget, WidgetType, Page, DashboardState, WidgetState } from './types';
+import { getWidgets, saveWidgets, deleteWidget } from '../services/apiService';
 
-const LOCAL_STORAGE_KEY = 'dashboard-state';
+// Debounce 유틸리티 함수
+function debounce<T extends (...args: any[]) => void>(func: T, delay: number) {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  return function(this: ThisParameterType<T>, ...args: Parameters<T>) {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    timeoutId = setTimeout(() => {
+      func.apply(this, args);
+    }, delay);
+  };
+}
+
+const getUserId = (): string => {
+  let userId = localStorage.getItem('hwnow_user_id');
+  if (!userId) {
+    userId = uuidv4();
+    localStorage.setItem('hwnow_user_id', userId);
+  }
+  return userId;
+};
 
 const createNewPage = (name: string): Page => ({
   id: uuidv4(),
@@ -14,61 +35,70 @@ const createNewPage = (name: string): Page => ({
 
 const defaultPage = createNewPage('Main Page');
 
-const initialState = {
-  pages: [defaultPage],
-  activePageIndex: 0,
-};
-
 export const useDashboardStore = create<DashboardState>((set, get) => ({
   pages: [defaultPage],
   activePageIndex: 0,
   isInitialized: false,
 
   actions: {
-    initialize: () => {
-      const savedState = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (savedState) {
-        try {
-          const { pages, activePageIndex } = JSON.parse(savedState);
-          if (Array.isArray(pages) && pages.length > 0) {
-            set({ pages, activePageIndex, isInitialized: true });
-          } else {
-            set({ ...initialState, isInitialized: true });
-          }
-        } catch (error) {
-          console.error("Failed to parse dashboard state from localStorage", error);
-          set({ ...initialState, isInitialized: true });
+    initialize: async () => {
+      const userId = getUserId();
+      try {
+        const widgetStates = await getWidgets(userId);
+        if (widgetStates && widgetStates.length > 0) {
+          // 서버 데이터를 프론트엔드 구조로 변환
+          const widgets: Widget[] = [];
+          const layouts: Layout[] = [];
+          
+          widgetStates.forEach(ws => {
+            let config = {};
+            try {
+              config = ws.config ? JSON.parse(ws.config) : {};
+            } catch {
+              console.error(`Failed to parse config for widget ${ws.widgetId}`);
+            }
+            
+            const layout = ws.layout ? JSON.parse(ws.layout) : {};
+
+            widgets.push({
+              i: ws.widgetId,
+              type: ws.widgetType,
+              config: config,
+            });
+
+            layouts.push({
+              i: ws.widgetId,
+              x: layout.x ?? 0,
+              y: layout.y ?? 0,
+              w: layout.w ?? 6,
+              h: layout.h ?? 2,
+            });
+          });
+          
+          const page = { ...defaultPage, widgets, layouts };
+          set({ pages: [page], activePageIndex: 0, isInitialized: true });
+
+        } else {
+          set({ pages: [defaultPage], activePageIndex: 0, isInitialized: true });
         }
-      } else {
-        set({ ...initialState, isInitialized: true });
+      } catch (error) {
+        console.error("Failed to initialize dashboard from server", error);
+        set({ pages: [defaultPage], activePageIndex: 0, isInitialized: true });
       }
     },
 
     addPage: () => {
-      const newPage = createNewPage(`Page ${get().pages.length + 1}`);
-      set((state) => ({
-        pages: [...state.pages, newPage],
-        activePageIndex: state.pages.length, // 새로운 페이지로 전환
-      }));
-      get().actions.saveState();
+      // 현재 서버 저장은 단일 페이지만 지원
+      console.warn("Adding new pages is not supported with server-side storage yet.");
     },
 
-    removePage: (pageId) => {
-      if (get().pages.length <= 1) {
-        console.warn("Cannot remove the last page.");
-        return;
-      }
-      set((state) => {
-        const newPages = state.pages.filter((page) => page.id !== pageId);
-        const newActiveIndex = Math.max(0, state.activePageIndex - 1);
-        return { pages: newPages, activePageIndex: newActiveIndex };
-      });
-      get().actions.saveState();
+    removePage: (_pageId) => {
+      console.warn("Removing pages is not supported with server-side storage yet.");
     },
 
     setActivePageIndex: (index) => {
       set({ activePageIndex: index });
-      get().actions.saveState();
+      // 페이지 전환은 상태 저장할 필요 없음
     },
     
     updatePageName: (pageId, name) => {
@@ -81,17 +111,21 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     },
 
     addWidget: (type: WidgetType) => {
-      const newWidget: Widget = { i: uuidv4(), type };
+      const activePage = get().pages[get().activePageIndex];
+      const newWidget: Widget = {
+        i: uuidv4(),
+        type,
+        config: {},
+      };
       const newLayout: Layout = {
         i: newWidget.i,
-        x: (get().pages[get().activePageIndex].widgets.length * 6) % 12,
-        y: Infinity,
+        x: (activePage.widgets.length * 6) % 12,
+        y: Infinity, // To place at the bottom
         w: 6,
         h: 2,
       };
 
       set((state) => {
-        const activePage = state.pages[state.activePageIndex];
         const updatedPage = {
           ...activePage,
           widgets: [...activePage.widgets, newWidget],
@@ -104,7 +138,11 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       get().actions.saveState();
     },
 
-    removeWidget: (widgetId) => {
+    removeWidget: async (widgetId) => {
+      const userId = getUserId();
+      // Optimistic update
+      const originalPages = get().pages;
+      
       set((state) => {
         const activePage = state.pages[state.activePageIndex];
         const updatedPage = {
@@ -116,7 +154,15 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         newPages[state.activePageIndex] = updatedPage;
         return { pages: newPages };
       });
-      get().actions.saveState();
+      
+      try {
+        await deleteWidget(userId, widgetId);
+        // No need to call saveState, as the deletion is final
+      } catch (error) {
+        console.error(`Failed to delete widget ${widgetId} on server`, error);
+        // Rollback on error
+        set({ pages: originalPages });
+      }
     },
 
     updateLayout: (layouts) => {
@@ -137,7 +183,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
           ...activePage,
           widgets: activePage.widgets.map((widget) =>
             widget.i === widgetId
-              ? { ...widget, config: { ...widget.config, ...config } }
+              ? { ...widget, config: { ...(widget.config || {}), ...config } }
               : widget
           ),
         };
@@ -148,15 +194,38 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       get().actions.saveState();
     },
 
-    saveState: () => {
+    saveState: debounce(() => {
+      const userId = getUserId();
       const { pages, activePageIndex } = get();
-      const stateToSave = JSON.stringify({ pages, activePageIndex });
-      localStorage.setItem(LOCAL_STORAGE_KEY, stateToSave);
-    },
+      const activePage = pages[activePageIndex];
+
+      const widgetStates: WidgetState[] = activePage.widgets.map(widget => {
+        const layout = activePage.layouts.find(l => l.i === widget.i);
+        return {
+          userId,
+          widgetId: widget.i,
+          widgetType: widget.type,
+          config: JSON.stringify(widget.config || {}),
+          layout: JSON.stringify({
+            x: layout?.x ?? 0,
+            y: layout?.y ?? 0,
+            w: layout?.w ?? 6,
+            h: layout?.h ?? 2,
+          }),
+        };
+      });
+      
+      saveWidgets(widgetStates).catch(err => {
+        console.error("Failed to save state to server:", err);
+      });
+    }, 1500), // 1.5초 디바운스
 
     resetState: () => {
-      localStorage.removeItem(LOCAL_STORAGE_KEY);
-      set({ ...initialState });
+      // localStorage.removeItem(LOCAL_STORAGE_KEY); - 더 이상 사용 안 함
+      localStorage.removeItem('hwnow_user_id'); // 새 유저 ID를 받도록 ID도 삭제
+      // 서버의 데이터도 삭제하는 로직이 필요할 수 있지만, 여기서는 프론트엔드 초기화만 진행
+      set({ pages: [defaultPage], activePageIndex: 0, isInitialized: false });
+      get().actions.initialize();
     },
   },
 })); 

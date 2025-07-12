@@ -3,7 +3,7 @@ import { useToast } from '../contexts/ToastContext';
 import './PageControls.css';
 
 interface WidgetOption {
-  type: 'cpu' | 'ram' | 'disk_read' | 'net_sent';
+  type: 'cpu' | 'ram' | 'disk_read' | 'net_sent' | 'cpu_temp';
   label: string;
   icon: React.ReactElement;
   description: string;
@@ -26,6 +26,16 @@ const widgetOptions: WidgetOption[] = [
         <line x1="20" y1="15" x2="23" y2="15" />
         <line x1="1" y1="9" x2="4" y2="9" />
         <line x1="1" y1="15" x2="4" y2="15" />
+      </svg>
+    ),
+  },
+  {
+    type: 'cpu_temp',
+    label: 'CPU Temperature',
+    description: 'Monitor CPU temperature in real-time',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z" />
       </svg>
     ),
   },

@@ -3,7 +3,7 @@ import type { WidgetType } from '../stores/types';
 
 let socket: WebSocket | null = null;
 
-const ALL_WIDGET_TYPES: WidgetType[] = ['cpu', 'ram', 'disk_read', 'disk_write', 'net_sent', 'net_recv'];
+const ALL_WIDGET_TYPES: WidgetType[] = ['cpu', 'cpu_temp', 'ram', 'disk_read', 'disk_write', 'net_sent', 'net_recv'];
 
 const isValidWidgetType = (type: any): type is WidgetType => {
   return ALL_WIDGET_TYPES.includes(type);
@@ -22,9 +22,9 @@ const connect = () => {
   socket.onmessage = (event) => {
     try {
       const message = JSON.parse(event.data);
-      const { setData } = useSystemResourceStore.getState().actions;
+      const { setData } = useSystemResourceStore.getState();
 
-      if (isValidWidgetType(message.type) && typeof message.data?.value === 'number') {
+      if ((isValidWidgetType(message.type) || message.type === 'cpu_temp') && typeof message.data?.value === 'number') {
         setData(message.type, message.data.value);
       }
     } catch (error) {
