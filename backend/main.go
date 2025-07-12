@@ -1,153 +1,78 @@
 package main
 
 import (
-	"bufio"
-	"embed"
-	"fmt"
-	"io/fs"
 	"log"
-	"net"
-	"net/http"
-	"os"
-	"os/exec"
-	"runtime"
-	"strconv"
-	"strings"
-	"time"
-
 	"monitoring-app/api"
+	"monitoring-app/db"
 	"monitoring-app/monitoring"
 	"monitoring-app/websockets"
+	"net/http"
+	"os"
+	"path/filepath"
 
-	psnet "github.com/shirou/gopsutil/v3/net"
+	"github.com/gorilla/mux"
+	_ "modernc.org/sqlite" // SQLite 드라이버를 modernc.org/sqlite로 변경
 )
 
-//go:embed dist/*
-var frontendFS embed.FS
-
 func main() {
-	port := "8080"
-	addr := ":" + port
-
-	// Check if port is available and handle conflicts
-	addr = ensurePortIsAvailable(port)
-
-	distFS, err := fs.Sub(frontendFS, "dist")
+	// --- Database Initialization ---
+	dbPath := "database"
+	dbFile := "monitoring.db"
+	dataSourceName, err := db.EnsureDB(dbPath, dbFile)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Database setup failed: %v", err)
 	}
 
-	// Create hub and channels
-	hub := websockets.NewHub()
-	wsChan := make(chan *monitoring.ResourceSnapshot, 100)
-	dbChan := make(chan *monitoring.ResourceSnapshot, 100)
+	database, err := db.InitDB(dataSourceName)
+	if err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer database.Close()
+	log.Println("Database connection successful.")
 
-	// Start hub and monitoring
+	// --- WebSocket and Monitoring Setup ---
+	hub := websockets.NewHub()
+
+	// 채널 생성
+	wsChan := make(chan *monitoring.ResourceSnapshot)
+	dbChan := make(chan *monitoring.ResourceSnapshot)
+
+	// 허브 및 모니터링 시작
 	go hub.Run(wsChan)
 	go monitoring.Start(wsChan, dbChan)
 
-	mux := http.NewServeMux()
+	// DB로 데이터 전송
+	go db.BatchInsertResourceLogs(dbChan, database)
 
-	// API routes
-	mux.HandleFunc("/api/dashboard/layout", api.GetLayoutHandler)
-	mux.HandleFunc("/api/widgets", api.GetWidgetsHandler)
+	// --- HTTP Server Setup ---
+	r := mux.NewRouter()
 
-	// WebSocket handler
-	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+	// API 핸들러에 DB 의존성 주입
+	apiHandler := api.NewHandler(database)
+
+	r.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		websockets.ServeWs(hub, w, r)
 	})
 
-	// Static files
-	mux.Handle("/", http.FileServer(http.FS(distFS)))
+	api.RegisterRoutes(r, apiHandler)
 
-	log.Printf("HTTP server started on %s. Access the application at http://localhost%s\n", addr, addr)
-	err = http.ListenAndServe(addr, mux)
-	if err != nil {
-		log.Fatal("ListenAndServe: ", err)
-	}
-}
-
-func ensurePortIsAvailable(initialPort string) string {
-	port := initialPort
-	for {
-		addr := ":" + port
-		listener, err := net.Listen("tcp", addr)
-		if err != nil {
-			if strings.Contains(err.Error(), "address already in use") || strings.Contains(err.Error(), "Only one usage of each socket address") {
-				fmt.Printf("Port %s is already in use.\n", port)
-				fmt.Print("Would you like to (1) kill the existing process or (2) use a different port? [1/2]: ")
-
-				reader := bufio.NewReader(os.Stdin)
-				choice, _ := reader.ReadString('\n')
-				choice = strings.TrimSpace(choice)
-
-				if choice == "1" {
-					if killProcessOnPort(port) {
-						fmt.Println("Process killed. Retrying on the same port...")
-						time.Sleep(1 * time.Second) // Give OS time to release port
-						continue
-					}
-					fmt.Println("Failed to kill process. Please choose another port.")
-				}
-
-				// Fall through to case 2 if killing fails or user chooses 2
-				fmt.Print("Please enter a new port number: ")
-				newPortStr, _ := reader.ReadString('\n')
-				port = strings.TrimSpace(newPortStr)
-				continue
-			}
-			// It's some other error
-			log.Fatalf("Failed to listen on port %s: %v", port, err)
-		}
-		// Port is available
-		listener.Close()
-		return addr
-	}
-}
-
-func killProcessOnPort(port string) bool {
-	portUint, err := strconv.ParseUint(port, 10, 32)
-	if err != nil {
-		fmt.Printf("Invalid port number: %s\n", port)
-		return false
+	// 정적 파일 서빙 (Frontend)
+	staticDir := "frontend/dist"
+	if _, err := os.Stat(staticDir); os.IsNotExist(err) {
+		log.Printf("Warning: Frontend 'dist' directory not found at %s.", staticDir)
+		log.Printf("Warning: API and WebSocket server will run, but the frontend will not be served.")
+	} else {
+		// Vite 빌드 결과물에 맞게 경로 설정
+		fs := http.FileServer(http.Dir(filepath.Join(staticDir)))
+		r.PathPrefix("/").Handler(http.StripPrefix("/", fs))
+		// SPA를 위한 인덱스 핸들러
+		r.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.ServeFile(w, r, filepath.Join(staticDir, "index.html"))
+		})
 	}
 
-	conns, err := psnet.Connections("tcp")
-	if err != nil {
-		log.Printf("Error getting connections: %v\n", err)
-		return false
+	log.Println("HTTP server starting on :8080")
+	if err := http.ListenAndServe(":8080", r); err != nil {
+		log.Fatalf("could not start server: %v\n", err)
 	}
-
-	pidToKill := int32(0)
-	for _, conn := range conns {
-		if conn.Laddr.Port == uint32(portUint) && conn.Status == "LISTEN" {
-			pidToKill = conn.Pid
-			break
-		}
-	}
-
-	if pidToKill == 0 {
-		fmt.Printf("No process found listening on port %s.\n", port)
-		return true // No process to kill, so technically successful.
-	}
-
-	fmt.Printf("Attempting to kill process with PID %d...\n", pidToKill)
-
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		cmd = exec.Command("taskkill", "/F", "/PID", fmt.Sprintf("%d", pidToKill))
-	} else { // linux, darwin
-		cmd = exec.Command("kill", "-9", fmt.Sprintf("%d", pidToKill))
-	}
-
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	err = cmd.Run()
-	if err != nil {
-		log.Printf("Failed to kill process %d: %v\n", pidToKill, err)
-		return false
-	}
-
-	fmt.Printf("Process %d killed successfully.\n", pidToKill)
-	return true
 }
