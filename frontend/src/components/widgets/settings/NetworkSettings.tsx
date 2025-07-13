@@ -12,6 +12,7 @@ const defaultConfig: WidgetConfig = {
   color: 'var(--color-info)',
   dataPoints: 50,
   unit: 'Mbps',
+  showGraph: true, // 기본적으로 그래프 표시
   showSentSpeed: true,
   showRecvSpeed: true,
   showTotalSent: false,
@@ -43,6 +44,18 @@ export const NetworkSettings: React.FC<NetworkSettingsProps> = ({ widget }) => {
     <form className="settings-form">
       <h3>데이터 표시 옵션</h3>
       
+      <div className="form-group">
+        <label>
+          <input
+            type="checkbox"
+            name="showGraph"
+            checked={config.showGraph}
+            onChange={handleConfigChange}
+          />
+          그래프 표시
+        </label>
+      </div>
+
       <div className="form-group">
         <label htmlFor="unit">단위 설정</label>
         <select 

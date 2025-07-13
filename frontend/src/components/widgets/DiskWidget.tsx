@@ -41,6 +41,7 @@ const DiskWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
   const showWriteSpeed = config.showWriteSpeed !== false;
   const showTotalSpace = config.showTotalSpace || false;
   const showFreeSpace = config.showFreeSpace || false;
+  const showGraph = config.showGraph !== false; // 기본값 true
 
   const handleSettingsClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -131,8 +132,9 @@ const DiskWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
             )}
           </div>
           
-          <div className="widget-chart" role="img" aria-label="Disk I/O trend chart">
-            <ResponsiveContainer width="100%" height="100%">
+          {showGraph && (
+            <div className="widget-chart" role="img" aria-label="Disk I/O trend chart">
+              <ResponsiveContainer width="100%" height="100%">
               {config.chartType === 'line' ? (
                 <LineChart data={chartData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
                   <XAxis dataKey="time" hide />
@@ -197,6 +199,7 @@ const DiskWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
               )}
             </ResponsiveContainer>
           </div>
+          )}
         </div>
       </div>
       

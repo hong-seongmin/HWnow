@@ -12,6 +12,7 @@ const defaultConfig: WidgetConfig = {
   color: 'var(--color-primary)',
   dataPoints: 50,
   unit: '%',
+  showGraph: true, // 기본적으로 그래프 표시
   showPercentage: true,
   showCoreUsage: false,
   showTemperature: false,
@@ -42,6 +43,18 @@ export const CpuSettings: React.FC<CpuSettingsProps> = ({ widget }) => {
     <form className="settings-form">
       <h3>데이터 표시 옵션</h3>
       
+      <div className="form-group">
+        <label>
+          <input
+            type="checkbox"
+            name="showGraph"
+            checked={config.showGraph}
+            onChange={handleConfigChange}
+          />
+          그래프 표시
+        </label>
+      </div>
+
       <div className="form-group">
         <label>
           <input

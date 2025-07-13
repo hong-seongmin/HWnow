@@ -55,6 +55,7 @@ const CpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
   };
 
   const showPercentage = config.showPercentage !== false;
+  const showGraph = config.showGraph !== false; // 기본값 true
 
   const handleSettingsClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -140,97 +141,99 @@ const CpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
             </div>
           </div>
           
-          <div className="widget-chart" role="img" aria-label="CPU usage trend chart">
-            <ResponsiveContainer width="100%" height="100%">
-              {config.chartType === 'line' ? (
-                <LineChart data={chartData} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
-                  <XAxis dataKey="time" hide />
-                  <YAxis domain={[0, 100]} hide />
-                  <Tooltip 
-                    formatter={(value: number) => [`${value.toFixed(1)}%`, 'CPU']}
-                    labelFormatter={() => ''}
-                    contentStyle={{ 
-                      backgroundColor: 'var(--color-surface)', 
-                      border: '1px solid var(--color-border)',
-                      borderRadius: 'var(--radius-sm)',
-                      color: 'var(--color-text-primary)'
-                    }}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="value" 
-                    stroke={valueColor}
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                </LineChart>
-              ) : config.chartType === 'bar' ? (
-                <BarChart data={chartData} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
-                  <XAxis dataKey="time" hide />
-                  <YAxis domain={[0, 100]} hide />
-                  <Tooltip 
-                    formatter={(value: number) => [`${value.toFixed(1)}%`, 'CPU']}
-                    labelFormatter={() => ''}
-                    contentStyle={{ 
-                      backgroundColor: 'var(--color-surface)', 
-                      border: '1px solid var(--color-border)',
-                      borderRadius: 'var(--radius-sm)',
-                      color: 'var(--color-text-primary)'
-                    }}
-                  />
-                  <Bar 
-                    dataKey="value" 
-                    fill={valueColor}
-                  />
-                </BarChart>
-              ) : config.chartType === 'gauge' ? (
-                <PieChart>
-                  <Pie
-                    data={[{ value: latestValue }, { value: 100 - latestValue }]}
-                    cx="50%"
-                    cy="50%"
-                    startAngle={180}
-                    endAngle={0}
-                    innerRadius="60%"
-                    outerRadius="80%"
-                    dataKey="value"
-                  >
-                    <Cell fill={valueColor} />
-                    <Cell fill="var(--color-border)" />
-                  </Pie>
-                  <Tooltip formatter={(value: number) => [`${value.toFixed(1)}%`, 'CPU']} />
-                </PieChart>
-              ) : (
-                <AreaChart data={chartData} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="cpuGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={valueColor} stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor={valueColor} stopOpacity={0.1}/>
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="time" hide />
-                  <YAxis domain={[0, 100]} hide />
-                  <Tooltip 
-                    formatter={(value: number) => [`${value.toFixed(1)}%`, 'CPU']}
-                    labelFormatter={() => ''}
-                    contentStyle={{ 
-                      backgroundColor: 'var(--color-surface)', 
-                      border: '1px solid var(--color-border)',
-                      borderRadius: 'var(--radius-sm)',
-                      color: 'var(--color-text-primary)'
-                    }}
-                  />
-                  <Area 
-                    type="monotone" 
-                    dataKey="value" 
-                    stroke={valueColor}
-                    strokeWidth={2}
-                    fill="url(#cpuGradient)"
-                  />
-                </AreaChart>
-              )}
-            </ResponsiveContainer>
-          </div>
+          {showGraph && (
+            <div className="widget-chart" role="img" aria-label="CPU usage trend chart">
+              <ResponsiveContainer width="100%" height="100%">
+                {config.chartType === 'line' ? (
+                  <LineChart data={chartData} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
+                    <XAxis dataKey="time" hide />
+                    <YAxis domain={[0, 100]} hide />
+                    <Tooltip 
+                      formatter={(value: number) => [`${value.toFixed(1)}%`, 'CPU']}
+                      labelFormatter={() => ''}
+                      contentStyle={{ 
+                        backgroundColor: 'var(--color-surface)', 
+                        border: '1px solid var(--color-border)',
+                        borderRadius: 'var(--radius-sm)',
+                        color: 'var(--color-text-primary)'
+                      }}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="value" 
+                      stroke={valueColor}
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                  </LineChart>
+                ) : config.chartType === 'bar' ? (
+                  <BarChart data={chartData} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
+                    <XAxis dataKey="time" hide />
+                    <YAxis domain={[0, 100]} hide />
+                    <Tooltip 
+                      formatter={(value: number) => [`${value.toFixed(1)}%`, 'CPU']}
+                      labelFormatter={() => ''}
+                      contentStyle={{ 
+                        backgroundColor: 'var(--color-surface)', 
+                        border: '1px solid var(--color-border)',
+                        borderRadius: 'var(--radius-sm)',
+                        color: 'var(--color-text-primary)'
+                      }}
+                    />
+                    <Bar 
+                      dataKey="value" 
+                      fill={valueColor}
+                    />
+                  </BarChart>
+                ) : config.chartType === 'gauge' ? (
+                  <PieChart>
+                    <Pie
+                      data={[{ value: latestValue }, { value: 100 - latestValue }]}
+                      cx="50%"
+                      cy="50%"
+                      startAngle={180}
+                      endAngle={0}
+                      innerRadius="60%"
+                      outerRadius="80%"
+                      dataKey="value"
+                    >
+                      <Cell fill={valueColor} />
+                      <Cell fill="var(--color-border)" />
+                    </Pie>
+                    <Tooltip formatter={(value: number) => [`${value.toFixed(1)}%`, 'CPU']} />
+                  </PieChart>
+                ) : (
+                  <AreaChart data={chartData} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="cpuGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={valueColor} stopOpacity={0.8}/>
+                        <stop offset="95%" stopColor={valueColor} stopOpacity={0.1}/>
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="time" hide />
+                    <YAxis domain={[0, 100]} hide />
+                    <Tooltip 
+                      formatter={(value: number) => [`${value.toFixed(1)}%`, 'CPU']}
+                      labelFormatter={() => ''}
+                      contentStyle={{ 
+                        backgroundColor: 'var(--color-surface)', 
+                        border: '1px solid var(--color-border)',
+                        borderRadius: 'var(--radius-sm)',
+                        color: 'var(--color-text-primary)'
+                      }}
+                    />
+                    <Area 
+                      type="monotone" 
+                      dataKey="value" 
+                      stroke={valueColor}
+                      strokeWidth={2}
+                      fill="url(#cpuGradient)"
+                    />
+                  </AreaChart>
+                )}
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
       </div>
       

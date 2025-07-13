@@ -22,6 +22,17 @@ export const CpuTempSettings: React.FC<CpuTempSettingsProps> = ({ widget }) => {
       
       <div className="form-group">
         <label>
+          <input
+            type="checkbox"
+            checked={config.showGraph !== false}
+            onChange={(e) => handleConfigChange('showGraph', e.target.checked)}
+          />
+          그래프 표시
+        </label>
+      </div>
+
+      <div className="form-group">
+        <label>
           차트 타입
         </label>
         <select

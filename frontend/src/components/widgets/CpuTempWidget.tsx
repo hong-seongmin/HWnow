@@ -43,6 +43,7 @@ const CpuTempWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
   };
 
   const tempColor = getTempColor(latestTemp);
+  const showGraph = config.showGraph !== false; // 기본값 true
   
   // CPU 온도에 따른 상태 설명
   const getTempDescription = (temp: number) => {
@@ -125,8 +126,9 @@ const CpuTempWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
             </div>
           </div>
           
-          <div className="widget-chart" role="img" aria-label="CPU temperature trend chart">
-            <ResponsiveContainer width="100%" height="100%">
+          {showGraph && (
+            <div className="widget-chart" role="img" aria-label="CPU temperature trend chart">
+              <ResponsiveContainer width="100%" height="100%">
               {config.chartType === 'line' ? (
                 <LineChart data={chartData} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
                   <XAxis dataKey="time" hide />
@@ -199,6 +201,7 @@ const CpuTempWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
               )}
             </ResponsiveContainer>
           </div>
+          )}
         </div>
       </div>
       
