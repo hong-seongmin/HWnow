@@ -36,6 +36,11 @@ export const PageTabs: React.FC = () => {
     }
   };
 
+  // 다중 페이지 기능 임시 비활성화 (서버 저장과 호환성 문제)
+  if (pages.length <= 1) {
+    return null; // 페이지가 1개 이하일 때는 탭을 표시하지 않음
+  }
+
   return (
     <div className="page-tabs-container">
       <div className="page-tabs" role="tablist">
@@ -61,6 +66,8 @@ export const PageTabs: React.FC = () => {
             ) : (
               <span className="page-name">{page.name}</span>
             )}
+            {/* 삭제 버튼 임시 비활성화 */}
+            {/*
             <button
               className="page-delete-button"
               onClick={(e) => {
@@ -73,8 +80,11 @@ export const PageTabs: React.FC = () => {
             >
               ×
             </button>
+            */}
           </div>
         ))}
+        {/* 새 페이지 추가 버튼 임시 비활성화 */}
+        {/*
         <button 
           className="add-page-button" 
           onClick={actions.addPage}
@@ -82,6 +92,7 @@ export const PageTabs: React.FC = () => {
         >
           +
         </button>
+        */}
       </div>
     </div>
   );
