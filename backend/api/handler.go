@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"io/ioutil"
+	"log"
 	"monitoring-app/db"
 	"net/http"
 
@@ -37,11 +38,10 @@ func (h *Handler) GetWidgetsHandler(w http.ResponseWriter, r *http.Request) {
 
 	widgets, err := db.GetWidgets(h.DB, userID)
 	if err != nil {
-		http.Error(w, "Failed to get widgets", http.StatusInternalServerError)
-		return
-	}
-
-	if widgets == nil {
+		log.Printf("Error getting widgets for user %s: %v", userID, err)
+		// 에러 시 빈 배열 반환
+		widgets = []db.WidgetState{}
+	} else if widgets == nil {
 		widgets = []db.WidgetState{} // null 대신 빈 배열 반환
 	}
 
@@ -53,16 +53,22 @@ func (h *Handler) GetWidgetsHandler(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) SaveWidgetsHandler(w http.ResponseWriter, r *http.Request) {
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
+		log.Printf("Error reading request body: %v", err)
 		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
 		return
 	}
 	defer r.Body.Close()
 
+	log.Printf("Received request body: %s", string(body))
+
 	var widgets []db.WidgetState
 	if err := json.Unmarshal(body, &widgets); err != nil {
+		log.Printf("Error unmarshaling JSON: %v", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
+
+	log.Printf("Parsed %d widgets", len(widgets))
 
 	if len(widgets) == 0 {
 		w.WriteHeader(http.StatusOK)
@@ -71,6 +77,7 @@ func (h *Handler) SaveWidgetsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := db.SaveWidgets(h.DB, widgets); err != nil {
+		log.Printf("Error saving widgets to DB: %v", err)
 		http.Error(w, "Failed to save widgets", http.StatusInternalServerError)
 		return
 	}
