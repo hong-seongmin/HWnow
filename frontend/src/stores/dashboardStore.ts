@@ -131,12 +131,51 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         type,
         config: {},
       };
+      
+      // 빈 공간 찾기 함수
+      const findEmptyPosition = () => {
+        const widgetWidth = 4; // 가로 크기를 6에서 4로 줄임
+        const widgetHeight = 3; // 세로 크기를 2에서 3으로 늘림
+        const gridWidth = 12;
+        
+        // 기존 위젯들의 위치 정보 수집
+        const occupiedPositions = new Set<string>();
+        activePage.layouts.forEach(layout => {
+          for (let x = layout.x; x < layout.x + layout.w; x++) {
+            for (let y = layout.y; y < layout.y + layout.h; y++) {
+              occupiedPositions.add(`${x},${y}`);
+            }
+          }
+        });
+        
+        // 빈 공간 찾기 (위에서 아래로, 왼쪽에서 오른쪽으로)
+        for (let y = 0; y < 20; y++) { // 최대 20행까지 검색
+          for (let x = 0; x <= gridWidth - widgetWidth; x++) {
+            let canPlace = true;
+            
+            // 해당 위치에 위젯을 배치할 수 있는지 확인
+            for (let dx = 0; dx < widgetWidth && canPlace; dx++) {
+              for (let dy = 0; dy < widgetHeight && canPlace; dy++) {
+                if (occupiedPositions.has(`${x + dx},${y + dy}`)) {
+                  canPlace = false;
+                }
+              }
+            }
+            
+            if (canPlace) {
+              return { x, y, w: widgetWidth, h: widgetHeight };
+            }
+          }
+        }
+        
+        // 빈 공간을 찾지 못한 경우 맨 아래에 배치
+        return { x: 0, y: Infinity, w: widgetWidth, h: widgetHeight };
+      };
+      
+      const position = findEmptyPosition();
       const newLayout: Layout = {
         i: newWidget.i,
-        x: (activePage.widgets.length * 6) % 12,
-        y: Infinity, // To place at the bottom
-        w: 6,
-        h: 2,
+        ...position,
       };
 
       set((state) => {
