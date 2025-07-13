@@ -18,12 +18,8 @@ function debounce<T extends (...args: any[]) => void>(func: T, delay: number) {
 }
 
 const getUserId = (): string => {
-  let userId = localStorage.getItem('hwnow_user_id');
-  if (!userId) {
-    userId = uuidv4();
-    localStorage.setItem('hwnow_user_id', userId);
-  }
-  return userId;
+  // 모든 브라우저에서 동일한 사용자 ID 사용 (공통 대시보드)
+  return 'global-user';
 };
 
 const createNewPage = (name: string): Page => ({
@@ -249,8 +245,6 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     }, 1500), // 1.5초 디바운스
 
     resetState: () => {
-      // localStorage.removeItem(LOCAL_STORAGE_KEY); - 더 이상 사용 안 함
-      localStorage.removeItem('hwnow_user_id'); // 새 유저 ID를 받도록 ID도 삭제
       // 서버의 데이터도 삭제하는 로직이 필요할 수 있지만, 여기서는 프론트엔드 초기화만 진행
       set({ pages: [defaultPage], activePageIndex: 0, isInitialized: false });
       get().actions.initialize();
