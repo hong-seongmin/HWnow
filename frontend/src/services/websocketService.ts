@@ -24,7 +24,22 @@ const connect = () => {
       const message = JSON.parse(event.data);
       const { setData } = useSystemResourceStore.getState();
 
-      if ((isValidWidgetType(message.type) || message.type === 'cpu_temp') && typeof message.data?.value === 'number') {
+      // Debug logging for all messages temporarily
+      if (message.type === 'cpu_info' || message.type.startsWith('cpu_core_')) {
+        console.log('WebSocket message:', message);
+      }
+
+      // Handle CPU info
+      if (message.type === 'cpu_info' && typeof message.data?.value === 'number' && message.data?.info) {
+        setData(message.type, message.data.value, message.data.info);
+        console.log('Received CPU info:', message.data.info, 'Cores:', message.data.value);
+      }
+      
+      // Handle CPU core data or regular widget types
+      else if ((isValidWidgetType(message.type) || 
+           message.type === 'cpu_temp' || 
+           message.type.startsWith('cpu_core_')) && 
+          typeof message.data?.value === 'number') {
         setData(message.type, message.data.value);
       }
     } catch (error) {
