@@ -15,6 +15,7 @@ type WebSocketMessage struct {
 
 type metricData struct {
 	Value float64 `json:"value"`
+	Info  string   `json:"info,omitempty"`
 }
 
 // Hub는 모든 WebSocket 클라이언트를 관리하고 메시지를 브로드캐스트합니다.
@@ -56,7 +57,10 @@ func (h *Hub) Run(snapshotChan <-chan *monitoring.ResourceSnapshot) {
 				// 각 메트릭을 별도의 WebSocket 메시지로 변환
 				message, err := json.Marshal(WebSocketMessage{
 					Type: metric.Type,
-					Data: metricData{Value: metric.Value},
+					Data: metricData{
+						Value: metric.Value,
+						Info:  metric.Info,
+					},
 				})
 				if err != nil {
 					log.Printf("Error marshalling metric data: %v", err)

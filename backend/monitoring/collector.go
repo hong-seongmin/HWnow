@@ -1,6 +1,7 @@
 package monitoring
 
 import (
+	"fmt"
 	"log"
 	"math"
 	"math/rand"
@@ -18,6 +19,7 @@ import (
 type Metric struct {
 	Type  string
 	Value float64
+	Info  string // CPU 모델명 등 추가 정보
 }
 
 // ResourceSnapshot은 특정 시점의 모든 자원 사용량 스냅샷입니다.
@@ -32,6 +34,8 @@ var (
 	baseCpuTemp     float64   = 35.0 // 기본 CPU 온도
 	tempHistory     []float64        // 온도 이력
 	sensorFailCount int              // 센서 실패 횟수
+	cpuInfoSent     bool             // CPU 정보 전송 여부
+	cpuInfoCounter  int              // CPU 정보 전송 카운터
 )
 
 // Start는 주기적으로 시스템 자원을 수집하여 채널로 전송하는 고루틴을 시작합니다.
@@ -62,6 +66,24 @@ func Start(wsChan chan<- *ResourceSnapshot, dbChan chan<- *ResourceSnapshot) {
 
 		var metrics []Metric
 
+		// CPU 정보 (처음 5회 전송)
+		cpuInfoCounter++
+		if cpuInfoCounter <= 5 {
+			cpuInfo, err := cpu.Info()
+			if err == nil && len(cpuInfo) > 0 {
+				cpuMetric := Metric{
+					Type:  "cpu_info", 
+					Value: float64(cpuInfo[0].Cores),
+					Info:  cpuInfo[0].ModelName,
+				}
+				metrics = append(metrics, cpuMetric)
+				log.Printf("Sending CPU info metric (#%d): Type=%s, Value=%.0f, Info=%s", 
+					cpuInfoCounter, cpuMetric.Type, cpuMetric.Value, cpuMetric.Info)
+			} else {
+				log.Printf("Failed to get CPU info: %v", err)
+			}
+		}
+
 		// CPU
 		cpuUsage, err := getCpuUsage()
 		if err != nil {
@@ -69,6 +91,18 @@ func Start(wsChan chan<- *ResourceSnapshot, dbChan chan<- *ResourceSnapshot) {
 		} else {
 			metrics = append(metrics, Metric{Type: "cpu", Value: cpuUsage})
 			lastCpuUsage = cpuUsage // CPU 온도 계산용
+		}
+
+		// CPU Core Usage
+		coreUsage, err := getCpuCoreUsage()
+		if err != nil {
+			log.Printf("Error getting CPU core usage: %v", err)
+		} else {
+			log.Printf("Detected %d CPU cores", len(coreUsage))
+			for i, usage := range coreUsage {
+				// 코어 번호를 1부터 시작
+				metrics = append(metrics, Metric{Type: fmt.Sprintf("cpu_core_%d", i+1), Value: usage})
+			}
 		}
 
 		// CPU Temperature
@@ -305,6 +339,23 @@ func getCpuUsage() (float64, error) {
 		return 0, err
 	}
 	return percentages[0], nil
+}
+
+func getCpuCoreUsage() ([]float64, error) {
+	// 코어별 사용률 측정 (논리 프로세서 개수)
+	percentages, err := cpu.Percent(time.Second, true) // true for per-core usage
+	if err != nil {
+		return nil, err
+	}
+	
+	// CPU 정보 확인
+	cpuInfo, err := cpu.Info()
+	if err == nil && len(cpuInfo) > 0 {
+		log.Printf("CPU Info - Model: %s, Cores: %d, Physical Cores: %d", 
+			cpuInfo[0].ModelName, cpuInfo[0].Cores, len(percentages))
+	}
+	
+	return percentages, nil
 }
 
 func getMemUsage() (float64, error) {
