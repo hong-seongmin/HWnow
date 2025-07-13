@@ -83,6 +83,24 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         }
       } catch (error) {
         console.error("Failed to initialize dashboard from server", error);
+        
+        // 서버에서 로드 실패시 localStorage 백업 확인
+        try {
+          const backup = localStorage.getItem('hwnow_dashboard_backup');
+          if (backup) {
+            const savedState = JSON.parse(backup);
+            console.log("Loaded state from localStorage backup");
+            set({ 
+              pages: savedState.pages || [defaultPage], 
+              activePageIndex: savedState.activePageIndex || 0, 
+              isInitialized: true 
+            });
+            return;
+          }
+        } catch (localErr) {
+          console.error("Failed to load from localStorage:", localErr);
+        }
+        
         set({ pages: [defaultPage], activePageIndex: 0, isInitialized: true });
       }
     },
@@ -217,6 +235,16 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       
       saveWidgets(widgetStates).catch(err => {
         console.error("Failed to save state to server:", err);
+        // 서버 저장 실패시 localStorage에 폴백
+        try {
+          localStorage.setItem('hwnow_dashboard_backup', JSON.stringify({
+            pages: get().pages,
+            activePageIndex: get().activePageIndex
+          }));
+          console.log("State saved to localStorage as fallback");
+        } catch (localErr) {
+          console.error("Failed to save to localStorage:", localErr);
+        }
       });
     }, 1500), // 1.5초 디바운스
 

@@ -9,6 +9,7 @@ export interface WidgetConfig {
   color?: string;
   dataPoints?: number;
   unit?: string;
+  showGraph?: boolean; // 그래프 표시 여부
   showUsedMemory?: boolean;
   showTotalMemory?: boolean;
   showPercentage?: boolean;
