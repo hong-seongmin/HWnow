@@ -8,6 +8,72 @@
   color: var(--color-text-primary);
 }
 
+/* CPU 모델명 스타일 */
+.cpu-model .widget-info-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+/* CPU 코어별 사용률 스타일 */
+.widget-core-usage {
+  margin-top: var(--spacing-md);
+}
+
+.widget-core-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: var(--spacing-sm);
+  color: var(--color-text-secondary);
+}
+
+.core-usage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--spacing-xs);
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.core-usage-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs);
+  background-color: var(--color-background);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+}
+
+.core-label {
+  font-weight: 500;
+  min-width: 40px;
+  color: var(--color-text-secondary);
+}
+
+.core-bar {
+  flex: 1;
+  height: 8px;
+  background-color: var(--color-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.core-bar-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+  border-radius: 4px;
+}
+
+.core-value {
+  font-weight: 600;
+  min-width: 35px;
+  text-align: right;
+}
+
 /* 위젯 헤더 */
 .widget-header {
   display: flex;

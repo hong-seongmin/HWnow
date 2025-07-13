@@ -14,6 +14,8 @@ interface WidgetProps {
 const CpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const cpuData = useSystemResourceStore((state) => state.data.cpu);
+  const cpuCores = useSystemResourceStore((state) => state.data.cpu_cores);
+  const cpuInfo = useSystemResourceStore((state) => state.data.cpu_info);
 
   const widget = useDashboardStore((state) => {
     const page = state.pages[state.activePageIndex];
@@ -22,6 +24,14 @@ const CpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
   
   const config = widget?.config || {};
   const latestValue = cpuData.length > 0 ? cpuData[cpuData.length - 1] : 0;
+  
+  // 임시 디버깅: 콘솔에 현재 상태 출력
+  console.log('CPU Widget Debug:', {
+    cpuInfo,
+    coreCount: Object.keys(cpuCores).length,
+    cores: Object.keys(cpuCores),
+    showCoreUsage: config.showCoreUsage
+  });
 
   // 설정된 데이터 포인트 수만큼만 표시
   const dataPoints = config.dataPoints || 50;
@@ -56,6 +66,7 @@ const CpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
 
   const showPercentage = config.showPercentage !== false;
   const showGraph = config.showGraph !== false; // 기본값 true
+  const showCoreUsage = config.showCoreUsage === true;
 
   const handleSettingsClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -131,15 +142,64 @@ const CpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
           )}
           
           <div className="widget-info" role="complementary" aria-label="CPU information">
+            {cpuInfo && (
+              <div className="widget-info-item cpu-model">
+                <span className="widget-info-label">Model:</span>
+                <span className="widget-info-value" title={cpuInfo.model}>
+                  {cpuInfo.model.replace(/CPU @ \d+\.\d+GHz/, '').trim()}
+                </span>
+              </div>
+            )}
             <div className="widget-info-item">
               <span className="widget-info-label">Cores:</span>
-              <span className="widget-info-value" aria-label="8 cores">8</span>
+              <span className="widget-info-value" aria-label={`${cpuInfo?.cores || 'Unknown'} cores`}>
+                {cpuInfo?.cores || 'Unknown'}
+              </span>
             </div>
             <div className="widget-info-item">
               <span className="widget-info-label">Threads:</span>
-              <span className="widget-info-value" aria-label="16 threads">16</span>
+              <span className="widget-info-value" aria-label={`${Object.keys(cpuCores).length || 'Unknown'} threads`}>
+                {Object.keys(cpuCores).length || 'Unknown'}
+              </span>
             </div>
           </div>
+          
+          {showCoreUsage && (
+            <div className="widget-core-usage" role="region" aria-label="CPU core usage">
+              <h4 className="widget-core-title">코어별 사용률</h4>
+              <div className="core-usage-grid">
+                {Object.entries(cpuCores)
+                  .sort(([a], [b]) => {
+                    const numA = parseInt(a.replace('cpu_core_', ''));
+                    const numB = parseInt(b.replace('cpu_core_', ''));
+                    return numA - numB;
+                  })
+                  .map(([coreId, coreData]) => {
+                    const coreIndex = coreId.replace('cpu_core_', '');
+                    const latestCoreValue = coreData.length > 0 ? coreData[coreData.length - 1] : 0;
+                    const coreColor = getValueColor(latestCoreValue);
+                    
+                    return (
+                      <div key={coreId} className="core-usage-item">
+                        <div className="core-label">Core {coreIndex}</div>
+                        <div className="core-bar">
+                          <div 
+                            className="core-bar-fill" 
+                            style={{ 
+                              width: `${latestCoreValue}%`, 
+                              backgroundColor: coreColor 
+                            }}
+                          />
+                        </div>
+                        <div className="core-value" style={{ color: coreColor }}>
+                          {latestCoreValue.toFixed(1)}%
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
           
           {showGraph && (
             <div className="widget-chart" role="img" aria-label="CPU usage trend chart">
