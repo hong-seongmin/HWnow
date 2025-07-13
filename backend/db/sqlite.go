@@ -6,6 +6,7 @@ import (
 	"monitoring-app/monitoring"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -44,6 +45,17 @@ func InitDB(dataSourceName string) (*sql.DB, error) {
 
 	if _, err = db.Exec(createTableSQL); err != nil {
 		return nil, err
+	}
+
+	// 기존 테이블에 config, layout 컬럼이 없으면 추가 (마이그레이션)
+	_, err = db.Exec("ALTER TABLE widget_states ADD COLUMN config TEXT")
+	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+		log.Printf("Warning: Could not add config column: %v", err)
+	}
+	
+	_, err = db.Exec("ALTER TABLE widget_states ADD COLUMN layout TEXT") 
+	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+		log.Printf("Warning: Could not add layout column: %v", err)
 	}
 
 	// resource_logs 테이블도 생성
