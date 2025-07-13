@@ -15,7 +15,6 @@ const defaultConfig: WidgetConfig = {
   showGraph: true, // 기본적으로 그래프 표시
   showPercentage: true,
   showCoreUsage: false,
-  showTemperature: false,
   updateInterval: 1,
   warningThreshold: 75,
   criticalThreshold: 90,
@@ -79,17 +78,6 @@ export const CpuSettings: React.FC<CpuSettingsProps> = ({ widget }) => {
         </label>
       </div>
 
-      <div className="form-group">
-        <label>
-          <input
-            type="checkbox"
-            name="showTemperature"
-            checked={config.showTemperature}
-            onChange={handleConfigChange}
-          />
-          CPU 온도 표시
-        </label>
-      </div>
 
       <h3>시간 범위 설정</h3>
       
