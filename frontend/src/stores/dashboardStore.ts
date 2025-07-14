@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import type { Layout } from 'react-grid-layout';
 import type { Widget, WidgetType, Page, DashboardState, WidgetState } from './types';
-import { getWidgets, saveWidgets, deleteWidget } from '../services/apiService';
+import { getWidgets, saveWidgets, deleteWidget, getPages, createPage, deletePage, updatePageName } from '../services/apiService';
 
 // Debounce 유틸리티 함수
 function debounce<T extends (...args: any[]) => void>(func: T, delay: number) {
@@ -29,7 +29,12 @@ const createNewPage = (name: string): Page => ({
   layouts: [],
 });
 
-const defaultPage = createNewPage('Main Page');
+const defaultPage: Page = {
+  id: 'main-page',
+  name: 'Main Page',
+  widgets: [],
+  layouts: [],
+};
 
 export const useDashboardStore = create<DashboardState>((set, get) => ({
   pages: [defaultPage],
@@ -40,43 +45,58 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     initialize: async () => {
       const userId = getUserId();
       try {
-        const widgetStates = await getWidgets(userId);
-        if (widgetStates && widgetStates.length > 0) {
-          // 서버 데이터를 프론트엔드 구조로 변환
-          const widgets: Widget[] = [];
-          const layouts: Layout[] = [];
+        // 페이지 목록 로드
+        const pageStates = await getPages(userId);
+        
+        if (pageStates && pageStates.length > 0) {
+          // 각 페이지의 위젯들을 로드
+          const pages: Page[] = [];
           
-          widgetStates.forEach(ws => {
-            let config = {};
-            try {
-              config = ws.config ? JSON.parse(ws.config) : {};
-            } catch {
-              console.error(`Failed to parse config for widget ${ws.widgetId}`);
-            }
+          for (const pageState of pageStates) {
+            const widgetStates = await getWidgets(userId, pageState.pageId);
             
-            const layout = ws.layout ? JSON.parse(ws.layout) : {};
+            const widgets: Widget[] = [];
+            const layouts: Layout[] = [];
+            
+            widgetStates.forEach(ws => {
+              let config = {};
+              try {
+                config = ws.config ? JSON.parse(ws.config) : {};
+              } catch {
+                console.error(`Failed to parse config for widget ${ws.widgetId}`);
+              }
+              
+              const layout = ws.layout ? JSON.parse(ws.layout) : {};
 
-            widgets.push({
-              i: ws.widgetId,
-              type: ws.widgetType,
-              config: config,
-            });
+              widgets.push({
+                i: ws.widgetId,
+                type: ws.widgetType,
+                config: config,
+              });
 
-            layouts.push({
-              i: ws.widgetId,
-              x: layout.x ?? 0,
-              y: layout.y ?? 0,
-              w: layout.w ?? 6,
-              h: layout.h ?? 2,
+              layouts.push({
+                i: ws.widgetId,
+                x: layout.x ?? 0,
+                y: layout.y ?? 0,
+                w: layout.w ?? 6,
+                h: layout.h ?? 2,
+              });
             });
-          });
+            
+            pages.push({
+              id: pageState.pageId,
+              name: pageState.pageName,
+              widgets,
+              layouts,
+            });
+          }
           
-          const page = { ...defaultPage, widgets, layouts };
-          set({ pages: [page], activePageIndex: 0, isInitialized: true });
-
+          set({ pages, activePageIndex: 0, isInitialized: true });
         } else {
+          // 페이지가 없으면 기본 페이지 생성
           set({ pages: [defaultPage], activePageIndex: 0, isInitialized: true });
         }
+        
       } catch (error) {
         console.error("Failed to initialize dashboard from server", error);
         
@@ -101,13 +121,59 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       }
     },
 
-    addPage: () => {
-      // 현재 서버 저장은 단일 페이지만 지원
-      console.warn("Adding new pages is not supported with server-side storage yet.");
+    addPage: async () => {
+      const userId = getUserId();
+      const pageId = uuidv4();
+      const pageName = `Page ${get().pages.length + 1}`;
+      
+      try {
+        await createPage(userId, pageId, pageName);
+        
+        // 서버 생성 성공 후 로컬 상태 업데이트
+        const newPage = createNewPage(pageName);
+        newPage.id = pageId;
+        
+        set(state => ({
+          pages: [...state.pages, newPage],
+          activePageIndex: state.pages.length // 새 페이지로 전환
+        }));
+      } catch (error) {
+        console.error('Failed to create page:', error);
+      }
     },
 
-    removePage: (_pageId) => {
-      console.warn("Removing pages is not supported with server-side storage yet.");
+    removePage: async (pageId: string) => {
+      const userId = getUserId();
+      const { pages, activePageIndex } = get();
+      
+      // 마지막 페이지는 삭제할 수 없음
+      if (pages.length <= 1) {
+        console.warn('Cannot delete the last page');
+        return;
+      }
+      
+      try {
+        await deletePage(userId, pageId);
+        
+        // 서버 삭제 성공 후 로컬 상태 업데이트
+        const pageIndex = pages.findIndex(p => p.id === pageId);
+        if (pageIndex === -1) return;
+        
+        const newPages = pages.filter(p => p.id !== pageId);
+        let newActiveIndex = activePageIndex;
+        
+        // 삭제된 페이지가 현재 활성 페이지이거나 그보다 앞에 있으면 인덱스 조정
+        if (pageIndex <= activePageIndex && newActiveIndex > 0) {
+          newActiveIndex = newActiveIndex - 1;
+        }
+        
+        set({
+          pages: newPages,
+          activePageIndex: Math.min(newActiveIndex, newPages.length - 1)
+        });
+      } catch (error) {
+        console.error('Failed to delete page:', error);
+      }
     },
 
     setActivePageIndex: (index) => {
@@ -115,13 +181,21 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       // 페이지 전환은 상태 저장할 필요 없음
     },
     
-    updatePageName: (pageId, name) => {
-      set(state => ({
-        pages: state.pages.map(page => 
-          page.id === pageId ? { ...page, name } : page
-        )
-      }));
-      get().actions.saveState();
+    updatePageName: async (pageId: string, name: string) => {
+      const userId = getUserId();
+      
+      try {
+        await updatePageName(userId, pageId, name);
+        
+        // 서버 업데이트 성공 후 로컬 상태 업데이트
+        set(state => ({
+          pages: state.pages.map(page => 
+            page.id === pageId ? { ...page, name } : page
+          )
+        }));
+      } catch (error) {
+        console.error('Failed to update page name:', error);
+      }
     },
 
     addWidget: (type: WidgetType) => {
@@ -193,8 +267,11 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
     removeWidget: async (widgetId) => {
       const userId = getUserId();
+      const { pages, activePageIndex } = get();
+      const activePage = pages[activePageIndex];
+      
       // Optimistic update
-      const originalPages = get().pages;
+      const originalPages = pages;
       
       set((state) => {
         const activePage = state.pages[state.activePageIndex];
@@ -209,7 +286,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       });
       
       try {
-        await deleteWidget(userId, widgetId);
+        await deleteWidget(userId, widgetId, activePage.id);
         // No need to call saveState, as the deletion is final
       } catch (error) {
         console.error(`Failed to delete widget ${widgetId} on server`, error);
@@ -256,6 +333,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         const layout = activePage.layouts.find(l => l.i === widget.i);
         return {
           userId,
+          pageId: activePage.id,
           widgetId: widget.i,
           widgetType: widget.type,
           config: JSON.stringify(widget.config || {}),
