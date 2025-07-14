@@ -172,8 +172,8 @@ func getCpuTemp() (float64, error) {
 	}
 
 	sensorFailCount++
-	// 10번에 한 번만 전체 센서 로그 출력
-	if sensorFailCount%10 == 1 {
+	// 30번에 한 번만 전체 센서 로그 출력 (로그 빈도 줄임)
+	if sensorFailCount%30 == 1 {
 		log.Printf("Found %d temperature sensors:", len(temps))
 		for i, temp := range temps {
 			log.Printf("  Sensor %d: Key='%s', Temperature=%.1f°C", i, temp.SensorKey, temp.Temperature)
@@ -202,7 +202,7 @@ func getCpuTemp() (float64, error) {
 
 	// 3. 유효한 센서가 전혀 없으면 시뮬레이션으로 전환
 	if len(candidateTemps) == 0 {
-		if sensorFailCount%10 == 1 {
+		if sensorFailCount%30 == 1 {
 			log.Printf("No valid temperature sensors found. Falling back to simulation.")
 		}
 		return generateRealisticCpuTemp(), nil
@@ -216,38 +216,28 @@ func getCpuTemp() (float64, error) {
 		}
 	}
 
-	// 5. 선택된 온도가 정적인지 확인
-	isStatic := false
-	if len(tempHistory) >= 5 {
-		isStatic = true
-		// 최근 5개의 값이 현재 값과 거의 동일한지 확인
-		for i := 1; i <= 5; i++ {
-			if math.Abs(tempHistory[len(tempHistory)-i]-bestTemp) > 1.0 { // 1°C 이상 차이나면 동적으로 간주
-				isStatic = false
-				break
-			}
+	// 5. 실제 센서 값을 우선 사용 - 정적 센서 검사 완화
+	// 온도가 합리적인 범위에 있으면 그대로 사용
+	if bestTemp >= 20 && bestTemp <= 100 {
+		// 온도 이력에 추가
+		tempHistory = append(tempHistory, bestTemp)
+		if len(tempHistory) > 20 {
+			tempHistory = tempHistory[1:] // 이력 배열 크기 유지
 		}
-	}
+		baseCpuTemp = bestTemp // 마지막 실제 온도를 다음 시뮬레이션의 기준으로 사용
 
-	if isStatic {
-		if sensorFailCount%10 == 1 {
-			log.Printf("Temperature sensor seems static at %.1f°C. Falling back to simulation.", bestTemp)
+		if sensorFailCount%30 == 1 {
+			log.Printf("Using real temperature sensor reading: %.1f°C", bestTemp)
 		}
-		return generateRealisticCpuTemp(), nil
+
+		return bestTemp, nil
 	}
 
-	// 6. 동적 온도를 이력에 저장하고 반환
-	tempHistory = append(tempHistory, bestTemp)
-	if len(tempHistory) > 10 {
-		tempHistory = tempHistory[1:] // 이력 배열 크기 유지
+	// 6. 온도가 비합리적인 범위에 있을 때만 시뮬레이션 사용
+	if sensorFailCount%30 == 1 {
+		log.Printf("Temperature %.1f°C is out of reasonable range. Falling back to simulation.", bestTemp)
 	}
-	baseCpuTemp = bestTemp // 마지막 실제 온도를 다음 시뮬레이션의 기준으로 사용
-
-	if sensorFailCount%10 == 1 {
-		log.Printf("Using best temperature sensor reading: %.1f°C", bestTemp)
-	}
-
-	return bestTemp, nil
+	return generateRealisticCpuTemp(), nil
 }
 
 // 가장 적절한 온도 센서 값을 찾는 함수
@@ -303,33 +293,66 @@ func isTemperatureRealistic(temp float64) bool {
 
 // 현실적인 CPU 온도를 생성하는 함수 (센서가 작동하지 않을 때)
 func generateRealisticCpuTemp() float64 {
+	// 실제 센서 값이 있으면 그것을 기준으로 사용
+	if baseCpuTemp > 0 {
+		// CPU 사용량에 따른 온도 변화량을 줄임 (더 현실적으로)
+		cpuTempIncrease := lastCpuUsage * 0.2 // CPU 사용량 1%당 0.2°C 증가
+
+		// 작은 랜덤 변화 추가 (±0.5°C)
+		randomVariation := (rand.Float64() - 0.5) * 1.0
+
+		// 시간에 따른 미세한 변화
+		timeVariation := math.Sin(float64(time.Now().Unix())/120) * 0.5 // 더 작은 변화
+
+		currentTemp := baseCpuTemp + cpuTempIncrease + randomVariation + timeVariation
+
+		// 온도 범위 제한 (실제 센서 기준 ±10°C)
+		minTemp := baseCpuTemp - 10
+		maxTemp := baseCpuTemp + 15
+		if minTemp < 20 {
+			minTemp = 20
+		}
+		if maxTemp > 100 {
+			maxTemp = 100
+		}
+
+		if currentTemp < minTemp {
+			currentTemp = minTemp
+		} else if currentTemp > maxTemp {
+			currentTemp = maxTemp
+		}
+
+		// 이전 온도와 급격한 변화 방지 (더 작은 변화량)
+		if len(tempHistory) > 0 {
+			lastTemp := tempHistory[len(tempHistory)-1]
+			maxChange := 1.0 // 최대 1°C 변화
+			if currentTemp > lastTemp+maxChange {
+				currentTemp = lastTemp + maxChange
+			} else if currentTemp < lastTemp-maxChange {
+				currentTemp = lastTemp - maxChange
+			}
+		}
+
+		return currentTemp
+	}
+
+	// 실제 센서 값이 없을 때만 기본 시뮬레이션 사용
 	// CPU 사용량에 따른 온도 계산
-	cpuTempIncrease := lastCpuUsage * 0.4 // CPU 사용량 1%당 0.4°C 증가 (영향도 약간 높임)
+	cpuTempIncrease := lastCpuUsage * 0.4 // CPU 사용량 1%당 0.4°C 증가
 
 	// 약간의 랜덤 변화 추가 (±1.5°C)
 	randomVariation := (rand.Float64() - 0.5) * 3
 
 	// 시간에 따른 자연스러운 변화
-	timeVariation := math.Sin(float64(time.Now().Unix())/60) * 1.5 // 주기를 좀 더 길게
+	timeVariation := math.Sin(float64(time.Now().Unix())/60) * 1.5
 
-	currentTemp := baseCpuTemp + cpuTempIncrease + randomVariation + timeVariation
+	currentTemp := 35.0 + cpuTempIncrease + randomVariation + timeVariation
 
 	// 온도 범위 제한 (25°C ~ 95°C)
 	if currentTemp < 25 {
 		currentTemp = 25
 	} else if currentTemp > 95 {
 		currentTemp = 95
-	}
-
-	// 이전 온도와 급격한 변화 방지 (Smoothing)
-	if len(tempHistory) > 0 {
-		lastTemp := tempHistory[len(tempHistory)-1]
-		maxChange := 2.0 // 최대 2°C 변화
-		if currentTemp > lastTemp+maxChange {
-			currentTemp = lastTemp + maxChange
-		} else if currentTemp < lastTemp-maxChange {
-			currentTemp = lastTemp - maxChange
-		}
 	}
 
 	return currentTemp
