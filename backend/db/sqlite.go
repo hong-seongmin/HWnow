@@ -31,23 +31,46 @@ func InitDB(dataSourceName string) (*sql.DB, error) {
 		return nil, err
 	}
 
+	// pages 테이블 생성
+	createPagesTableSQL := `
+	CREATE TABLE IF NOT EXISTS pages (
+		page_id TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		page_name TEXT NOT NULL,
+		page_order INTEGER DEFAULT 0,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (user_id, page_id)
+	);`
+
+	if _, err = db.Exec(createPagesTableSQL); err != nil {
+		return nil, err
+	}
+
+	// widget_states 테이블 생성
 	createTableSQL := `
 	CREATE TABLE IF NOT EXISTS widget_states (
 		user_id TEXT NOT NULL,
+		page_id TEXT NOT NULL,
 		widget_id TEXT NOT NULL,
 		widget_type TEXT NOT NULL,
 		config TEXT,
 		layout TEXT,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		PRIMARY KEY (user_id, widget_id)
+		PRIMARY KEY (user_id, page_id, widget_id)
 	);`
 
 	if _, err = db.Exec(createTableSQL); err != nil {
 		return nil, err
 	}
 
-	// 기존 테이블에 config, layout 컬럼이 없으면 추가 (마이그레이션)
+	// 기존 테이블에 page_id, config, layout 컬럼이 없으면 추가 (마이그레이션)
+	_, err = db.Exec("ALTER TABLE widget_states ADD COLUMN page_id TEXT DEFAULT 'main-page'")
+	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+		log.Printf("Warning: Could not add page_id column: %v", err)
+	}
+	
 	_, err = db.Exec("ALTER TABLE widget_states ADD COLUMN config TEXT")
 	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
 		log.Printf("Warning: Could not add config column: %v", err)
@@ -56,6 +79,14 @@ func InitDB(dataSourceName string) (*sql.DB, error) {
 	_, err = db.Exec("ALTER TABLE widget_states ADD COLUMN layout TEXT") 
 	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
 		log.Printf("Warning: Could not add layout column: %v", err)
+	}
+
+	// 기본 페이지가 없으면 생성
+	_, err = db.Exec(`INSERT OR IGNORE INTO pages (page_id, user_id, page_name, page_order) 
+		SELECT DISTINCT 'main-page', user_id, 'Main Page', 0 FROM widget_states 
+		UNION SELECT 'main-page', 'global-user', 'Main Page', 0`)
+	if err != nil {
+		log.Printf("Warning: Could not create default page: %v", err)
 	}
 
 	// resource_logs 테이블도 생성
@@ -75,15 +106,23 @@ func InitDB(dataSourceName string) (*sql.DB, error) {
 
 type WidgetState struct {
 	UserID     string `json:"userId"`
+	PageID     string `json:"pageId"`
 	WidgetID   string `json:"widgetId"`
 	WidgetType string `json:"widgetType"`
 	Config     string `json:"config"`
 	Layout     string `json:"layout"`
 }
 
-func GetWidgets(db *sql.DB, userID string) ([]WidgetState, error) {
-	query := "SELECT widget_id, widget_type, config, layout FROM widget_states WHERE user_id = ?"
-	rows, err := db.Query(query, userID)
+type Page struct {
+	PageID    string `json:"pageId"`
+	UserID    string `json:"userId"`
+	PageName  string `json:"pageName"`
+	PageOrder int    `json:"pageOrder"`
+}
+
+func GetWidgets(db *sql.DB, userID, pageID string) ([]WidgetState, error) {
+	query := "SELECT page_id, widget_id, widget_type, config, layout FROM widget_states WHERE user_id = ? AND page_id = ?"
+	rows, err := db.Query(query, userID, pageID)
 	if err != nil {
 		return nil, err
 	}
@@ -94,9 +133,11 @@ func GetWidgets(db *sql.DB, userID string) ([]WidgetState, error) {
 		var w WidgetState
 		w.UserID = userID
 		var config, layout sql.NullString
-		if err := rows.Scan(&w.WidgetID, &w.WidgetType, &config, &layout); err != nil {
+		var pageID sql.NullString
+		if err := rows.Scan(&pageID, &w.WidgetID, &w.WidgetType, &config, &layout); err != nil {
 			return nil, err
 		}
+		w.PageID = pageID.String
 		w.Config = config.String
 		w.Layout = layout.String
 		widgets = append(widgets, w)
@@ -111,9 +152,9 @@ func SaveWidgets(db *sql.DB, widgets []WidgetState) error {
 	}
 
 	stmt, err := tx.Prepare(`
-		INSERT INTO widget_states (user_id, widget_id, widget_type, config, layout)
-		VALUES (?, ?, ?, ?, ?)
-		ON CONFLICT(user_id, widget_id) DO UPDATE SET
+		INSERT INTO widget_states (user_id, page_id, widget_id, widget_type, config, layout)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(user_id, page_id, widget_id) DO UPDATE SET
 		widget_type = excluded.widget_type,
 		config = excluded.config,
 		layout = excluded.layout,
@@ -126,7 +167,7 @@ func SaveWidgets(db *sql.DB, widgets []WidgetState) error {
 	defer stmt.Close()
 
 	for _, w := range widgets {
-		_, err := stmt.Exec(w.UserID, w.WidgetID, w.WidgetType, w.Config, w.Layout)
+		_, err := stmt.Exec(w.UserID, w.PageID, w.WidgetID, w.WidgetType, w.Config, w.Layout)
 		if err != nil {
 			tx.Rollback()
 			return err
@@ -136,9 +177,72 @@ func SaveWidgets(db *sql.DB, widgets []WidgetState) error {
 	return tx.Commit()
 }
 
-func DeleteWidget(db *sql.DB, userID, widgetID string) error {
-	query := "DELETE FROM widget_states WHERE user_id = ? AND widget_id = ?"
-	_, err := db.Exec(query, userID, widgetID)
+func DeleteWidget(db *sql.DB, userID, pageID, widgetID string) error {
+	query := "DELETE FROM widget_states WHERE user_id = ? AND page_id = ? AND widget_id = ?"
+	_, err := db.Exec(query, userID, pageID, widgetID)
+	return err
+}
+
+// Page management functions
+func GetPages(db *sql.DB, userID string) ([]Page, error) {
+	query := "SELECT page_id, page_name, page_order FROM pages WHERE user_id = ? ORDER BY page_order"
+	rows, err := db.Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var pages []Page
+	for rows.Next() {
+		var p Page
+		p.UserID = userID
+		if err := rows.Scan(&p.PageID, &p.PageName, &p.PageOrder); err != nil {
+			return nil, err
+		}
+		pages = append(pages, p)
+	}
+	return pages, nil
+}
+
+func CreatePage(db *sql.DB, userID, pageID, pageName string) error {
+	// Get the highest page_order for this user
+	var maxOrder int
+	err := db.QueryRow("SELECT COALESCE(MAX(page_order), -1) FROM pages WHERE user_id = ?", userID).Scan(&maxOrder)
+	if err != nil {
+		return err
+	}
+
+	query := `INSERT INTO pages (page_id, user_id, page_name, page_order) VALUES (?, ?, ?, ?)`
+	_, err = db.Exec(query, pageID, userID, pageName, maxOrder+1)
+	return err
+}
+
+func DeletePage(db *sql.DB, userID, pageID string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+
+	// Delete all widgets in this page first
+	_, err = tx.Exec("DELETE FROM widget_states WHERE user_id = ? AND page_id = ?", userID, pageID)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// Delete the page
+	_, err = tx.Exec("DELETE FROM pages WHERE user_id = ? AND page_id = ?", userID, pageID)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func UpdatePageName(db *sql.DB, userID, pageID, newName string) error {
+	query := "UPDATE pages SET page_name = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND page_id = ?"
+	_, err := db.Exec(query, newName, userID, pageID)
 	return err
 }
 
