@@ -36,10 +36,8 @@ export const PageTabs: React.FC = () => {
     }
   };
 
-  // 다중 페이지 기능 임시 비활성화 (서버 저장과 호환성 문제)
-  if (pages.length <= 1) {
-    return null; // 페이지가 1개 이하일 때는 탭을 표시하지 않음
-  }
+  // 다중 페이지 기능 활성화 - 서버 저장 지원
+  // 항상 페이지 탭을 표시하여 사용자가 새 페이지를 추가할 수 있도록 함
 
   return (
     <div className="page-tabs-container">
@@ -66,25 +64,22 @@ export const PageTabs: React.FC = () => {
             ) : (
               <span className="page-name">{page.name}</span>
             )}
-            {/* 삭제 버튼 임시 비활성화 */}
-            {/*
-            <button
-              className="page-delete-button"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (window.confirm(`'${page.name}' 페이지를 삭제하시겠습니까?`)) {
-                  actions.removePage(page.id);
-                }
-              }}
-              aria-label={`'${page.name}' 페이지 삭제`}
-            >
-              ×
-            </button>
-            */}
+            {pages.length > 1 && (
+              <button
+                className="page-delete-button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (window.confirm(`'${page.name}' 페이지를 삭제하시겠습니까?`)) {
+                    actions.removePage(page.id);
+                  }
+                }}
+                aria-label={`'${page.name}' 페이지 삭제`}
+              >
+                ×
+              </button>
+            )}
           </div>
         ))}
-        {/* 새 페이지 추가 버튼 임시 비활성화 */}
-        {/*
         <button 
           className="add-page-button" 
           onClick={actions.addPage}
@@ -92,7 +87,6 @@ export const PageTabs: React.FC = () => {
         >
           +
         </button>
-        */}
       </div>
     </div>
   );
