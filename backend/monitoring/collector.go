@@ -66,9 +66,11 @@ func Start(wsChan chan<- *ResourceSnapshot, dbChan chan<- *ResourceSnapshot) {
 
 		var metrics []Metric
 
-		// CPU 정보 (처음 5회 전송)
+		// CPU 정보 (처음 10회 전송, 그 후 30초마다 한 번씩)
 		cpuInfoCounter++
-		if cpuInfoCounter <= 5 {
+		shouldSendCpuInfo := cpuInfoCounter <= 10 || cpuInfoCounter%15 == 0 // 처음 10회 + 30초마다 (15 * 2초)
+		
+		if shouldSendCpuInfo {
 			cpuInfo, err := cpu.Info()
 			if err == nil && len(cpuInfo) > 0 {
 				cpuMetric := Metric{

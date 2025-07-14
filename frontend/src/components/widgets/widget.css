@@ -221,16 +221,19 @@
 /* 위젯 서브 정보 */
 .widget-info {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--spacing-md);
   margin-bottom: var(--spacing-sm);
   font-size: 0.875rem;
   color: var(--color-text-secondary);
+  min-height: 20px; /* 콘텐츠가 로딩 중일 때도 공간 확보 */
 }
 
 .widget-info-item {
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
+  flex-shrink: 0;
 }
 
 .widget-info-label {
@@ -239,6 +242,10 @@
 
 .widget-info-value {
   color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
 }
 
 /* 차트 컨테이너 */

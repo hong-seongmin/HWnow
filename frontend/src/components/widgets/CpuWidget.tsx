@@ -25,12 +25,14 @@ const CpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
   const config = widget?.config || {};
   const latestValue = cpuData.length > 0 ? cpuData[cpuData.length - 1] : 0;
   
-  // 임시 디버깅: 콘솔에 현재 상태 출력
+  // 디버깅: 콘솔에 현재 상태 출력
   console.log('CPU Widget Debug:', {
     cpuInfo,
     coreCount: Object.keys(cpuCores).length,
     cores: Object.keys(cpuCores),
-    showCoreUsage: config.showCoreUsage
+    showCoreUsage: config.showCoreUsage,
+    cpuData: cpuData.slice(-3), // 최근 3개 CPU 데이터
+    latestValue
   });
 
   // 설정된 데이터 포인트 수만큼만 표시
@@ -142,24 +144,22 @@ const CpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
           )}
           
           <div className="widget-info" role="complementary" aria-label="CPU information">
-            {cpuInfo && (
-              <div className="widget-info-item cpu-model">
-                <span className="widget-info-label">Model:</span>
-                <span className="widget-info-value" title={cpuInfo.model}>
-                  {cpuInfo.model.replace(/CPU @ \d+\.\d+GHz/, '').trim()}
-                </span>
-              </div>
-            )}
+            <div className="widget-info-item cpu-model">
+              <span className="widget-info-label">Model:</span>
+              <span className="widget-info-value" title={cpuInfo?.model || 'Loading...'}>
+                {cpuInfo?.model ? cpuInfo.model.replace(/CPU @ \d+\.\d+GHz/, '').trim() : 'Loading...'}
+              </span>
+            </div>
             <div className="widget-info-item">
               <span className="widget-info-label">Cores:</span>
-              <span className="widget-info-value" aria-label={`${cpuInfo?.cores || 'Unknown'} cores`}>
-                {cpuInfo?.cores || 'Unknown'}
+              <span className="widget-info-value" aria-label={`${cpuInfo?.cores || 'Loading'} cores`}>
+                {cpuInfo?.cores || 'Loading'}
               </span>
             </div>
             <div className="widget-info-item">
               <span className="widget-info-label">Threads:</span>
-              <span className="widget-info-value" aria-label={`${Object.keys(cpuCores).length || 'Unknown'} threads`}>
-                {Object.keys(cpuCores).length || 'Unknown'}
+              <span className="widget-info-value" aria-label={`${Object.keys(cpuCores).length || 'Loading'} threads`}>
+                {Object.keys(cpuCores).length || 'Loading'}
               </span>
             </div>
           </div>
@@ -175,7 +175,7 @@ const CpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
                     return numA - numB;
                   })
                   .map(([coreId, coreData]) => {
-                    const coreIndex = coreId.replace('cpu_core_', '');
+                    const coreIndex = parseInt(coreId.replace('cpu_core_', ''));
                     const latestCoreValue = coreData.length > 0 ? coreData[coreData.length - 1] : 0;
                     const coreColor = getValueColor(latestCoreValue);
                     
