@@ -22,10 +22,19 @@ export interface WidgetConfig {
 // DB에 저장되는 위젯의 상태
 export interface WidgetState {
   userId: string;
+  pageId: string;
   widgetId: string;
   widgetType: WidgetType;
   config: string; // JSON string for widget-specific config
   layout?: string; // JSON string for layout info
+}
+
+// DB에 저장되는 페이지 정보
+export interface PageState {
+  pageId: string;
+  userId: string;
+  pageName: string;
+  pageOrder: number;
 }
 
 // 프론트엔드에서 사용하는 위젯 객체
