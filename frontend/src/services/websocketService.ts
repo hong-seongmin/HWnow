@@ -3,7 +3,7 @@ import type { WidgetType } from '../stores/types';
 
 let socket: WebSocket | null = null;
 
-const ALL_WIDGET_TYPES: WidgetType[] = ['cpu', 'cpu_temp', 'ram', 'disk_read', 'disk_write', 'net_sent', 'net_recv'];
+const ALL_WIDGET_TYPES: WidgetType[] = ['cpu', 'ram', 'disk_read', 'disk_write', 'net_sent', 'net_recv'];
 
 const isValidWidgetType = (type: any): type is WidgetType => {
   return ALL_WIDGET_TYPES.includes(type);
@@ -37,7 +37,6 @@ const connect = () => {
       
       // Handle CPU core data or regular widget types
       else if ((isValidWidgetType(message.type) || 
-           message.type === 'cpu_temp' || 
            message.type.startsWith('cpu_core_')) && 
           typeof message.data?.value === 'number') {
         setData(message.type, message.data.value);

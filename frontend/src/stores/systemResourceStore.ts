@@ -3,7 +3,6 @@ import type { WidgetType } from './types';
 
 export type SystemResourceData = {
   cpu: number[];
-  cpu_temp: number[];
   cpu_cores: { [key: string]: number[] }; // cpu_core_1, cpu_core_2, etc.
   cpu_info: { model: string; cores: number } | null; // CPU 정보
   ram: number[];
@@ -15,13 +14,12 @@ export type SystemResourceData = {
 
 interface SystemResourceState {
   data: SystemResourceData;
-  setData: (type: WidgetType | 'cpu_temp' | string, value: number, info?: string) => void;
+  setData: (type: WidgetType | string, value: number, info?: string) => void;
   maxDataPoints: number;
 }
 
 const initialState: SystemResourceData = {
   cpu: [],
-  cpu_temp: [],
   cpu_cores: {},
   cpu_info: null,
   ram: [],

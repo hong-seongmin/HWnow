@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go run:*)",
+      "Bash(curl:*)",
+      "Bash(ls:*)",
+      "Bash(./monitoring-app.exe)",
+      "Bash(pkill:*)",
+      "Bash(taskkill:*)",
+      "Bash(mkdir:*)",
+      "Bash(/cygdrive/c/Program Files/Go/bin/go.exe version)",
+      "Bash(\"/cygdrive/c/Program Files/Go/bin/go.exe\" build -o monitoring-app-new.exe)",
+      "Bash(cmd.exe /c \"go build -o monitoring-app-new.exe\")",
+      "Bash(go build:*)",
+      "Bash(find:*)",
+      "Bash(rm:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git config:*)",
+      "Bash(git push:*)",
+      "Bash(npm run build:*)",
+      "Bash(grep:*)"
+    ],
+    "deny": []
+  }
+}

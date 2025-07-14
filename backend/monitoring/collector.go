@@ -3,14 +3,10 @@ package monitoring
 import (
 	"fmt"
 	"log"
-	"math"
-	"math/rand"
-	"strings"
 	"time"
 
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
-	"github.com/shirou/gopsutil/v3/host"
 	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/shirou/gopsutil/v3/net"
 )
@@ -28,14 +24,9 @@ type ResourceSnapshot struct {
 	Metrics   []Metric
 }
 
-// CPU 온도 추적을 위한 전역 변수
+// 모니터링을 위한 전역 변수
 var (
-	lastCpuUsage    float64
-	baseCpuTemp     float64   = 35.0 // 기본 CPU 온도
-	tempHistory     []float64        // 온도 이력
-	sensorFailCount int              // 센서 실패 횟수
-	cpuInfoSent     bool             // CPU 정보 전송 여부
-	cpuInfoCounter  int              // CPU 정보 전송 카운터
+	cpuInfoCounter int // CPU 정보 전송 카운터
 )
 
 // Start는 주기적으로 시스템 자원을 수집하여 채널로 전송하는 고루틴을 시작합니다.
@@ -92,7 +83,6 @@ func Start(wsChan chan<- *ResourceSnapshot, dbChan chan<- *ResourceSnapshot) {
 			log.Printf("Error getting CPU usage: %v", err)
 		} else {
 			metrics = append(metrics, Metric{Type: "cpu", Value: cpuUsage})
-			lastCpuUsage = cpuUsage // CPU 온도 계산용
 		}
 
 		// CPU Core Usage
@@ -105,14 +95,6 @@ func Start(wsChan chan<- *ResourceSnapshot, dbChan chan<- *ResourceSnapshot) {
 				// 코어 번호를 1부터 시작
 				metrics = append(metrics, Metric{Type: fmt.Sprintf("cpu_core_%d", i+1), Value: usage})
 			}
-		}
-
-		// CPU Temperature
-		cpuTemp, err := getCpuTemp()
-		if err != nil {
-			// Don't log error if sensors are not available, it's common
-		} else {
-			metrics = append(metrics, Metric{Type: "cpu_temp", Value: cpuTemp})
 		}
 
 		// Memory
@@ -164,199 +146,7 @@ func Start(wsChan chan<- *ResourceSnapshot, dbChan chan<- *ResourceSnapshot) {
 	}
 }
 
-func getCpuTemp() (float64, error) {
-	temps, err := host.SensorsTemperatures()
-	if err != nil {
-		log.Printf("Error getting temperature sensors: %v. Falling back to simulation.", err)
-		return generateRealisticCpuTemp(), nil
-	}
 
-	sensorFailCount++
-	// 30번에 한 번만 전체 센서 로그 출력 (로그 빈도 줄임)
-	if sensorFailCount%30 == 1 {
-		log.Printf("Found %d temperature sensors:", len(temps))
-		for i, temp := range temps {
-			log.Printf("  Sensor %d: Key='%s', Temperature=%.1f°C", i, temp.SensorKey, temp.Temperature)
-		}
-	}
-
-	var candidateTemps []float64
-	// 1. 신뢰성 높은 CPU 센서 키워드를 우선 탐색
-	for _, temp := range temps {
-		key := strings.ToLower(temp.SensorKey)
-		if strings.Contains(key, "core") || strings.Contains(key, "cpu") || strings.Contains(key, "k10temp") || strings.Contains(key, "package") {
-			if temp.Temperature > 0 && temp.Temperature < 110 {
-				candidateTemps = append(candidateTemps, temp.Temperature)
-			}
-		}
-	}
-
-	// 2. 특정 키워드 센서가 없으면, 유효한 범위의 모든 센서를 후보로 채택
-	if len(candidateTemps) == 0 {
-		for _, temp := range temps {
-			if temp.Temperature > 20 && temp.Temperature < 110 {
-				candidateTemps = append(candidateTemps, temp.Temperature)
-			}
-		}
-	}
-
-	// 3. 유효한 센서가 전혀 없으면 시뮬레이션으로 전환
-	if len(candidateTemps) == 0 {
-		if sensorFailCount%30 == 1 {
-			log.Printf("No valid temperature sensors found. Falling back to simulation.")
-		}
-		return generateRealisticCpuTemp(), nil
-	}
-
-	// 4. 후보 중 가장 높은 온도를 선택 (보통 CPU 패키지 온도가 가장 높음)
-	bestTemp := 0.0
-	for _, t := range candidateTemps {
-		if t > bestTemp {
-			bestTemp = t
-		}
-	}
-
-	// 5. 실제 센서 값을 우선 사용 - 정적 센서 검사 완화
-	// 온도가 합리적인 범위에 있으면 그대로 사용
-	if bestTemp >= 20 && bestTemp <= 100 {
-		// 온도 이력에 추가
-		tempHistory = append(tempHistory, bestTemp)
-		if len(tempHistory) > 20 {
-			tempHistory = tempHistory[1:] // 이력 배열 크기 유지
-		}
-		baseCpuTemp = bestTemp // 마지막 실제 온도를 다음 시뮬레이션의 기준으로 사용
-
-		if sensorFailCount%30 == 1 {
-			log.Printf("Using real temperature sensor reading: %.1f°C", bestTemp)
-		}
-
-		return bestTemp, nil
-	}
-
-	// 6. 온도가 비합리적인 범위에 있을 때만 시뮬레이션 사용
-	if sensorFailCount%30 == 1 {
-		log.Printf("Temperature %.1f°C is out of reasonable range. Falling back to simulation.", bestTemp)
-	}
-	return generateRealisticCpuTemp(), nil
-}
-
-// 가장 적절한 온도 센서 값을 찾는 함수
-func findBestTemperature(temps []float64, names []string) float64 {
-	if len(temps) == 0 {
-		return 0
-	}
-
-	// 1. 온도 변화가 있는 센서를 우선적으로 선택
-	for i, temp := range temps {
-		if len(tempHistory) > 0 {
-			// 이전 온도와 비교하여 변화가 있는 센서 찾기
-			lastTemp := tempHistory[len(tempHistory)-1]
-			if math.Abs(temp-lastTemp) > 0.1 { // 0.1°C 이상 변화
-				log.Printf("Temperature change detected in sensor %s: %.1f°C", names[i], temp)
-				return temp
-			}
-		}
-	}
-
-	// 2. CPU 사용량과 연관된 온도 변화 감지
-	if len(tempHistory) > 2 {
-		for _, temp := range temps {
-			// 현재 온도가 CPU 사용량과 연관성이 있는지 확인
-			if isTemperatureRealistic(temp) {
-				return temp
-			}
-		}
-	}
-
-	// 3. 가장 높은 온도 값 선택 (일반적으로 CPU 온도가 더 높음)
-	maxTemp := temps[0]
-	for _, temp := range temps {
-		if temp > maxTemp {
-			maxTemp = temp
-		}
-	}
-
-	return maxTemp
-}
-
-// 온도가 현실적인지 확인하는 함수
-func isTemperatureRealistic(temp float64) bool {
-	// CPU 사용량이 높을 때 온도가 더 높아야 함
-	if lastCpuUsage > 50 && temp > 40 {
-		return true
-	}
-	if lastCpuUsage < 10 && temp < 60 {
-		return true
-	}
-	return temp >= 25 && temp <= 90 // 일반적인 CPU 온도 범위
-}
-
-// 현실적인 CPU 온도를 생성하는 함수 (센서가 작동하지 않을 때)
-func generateRealisticCpuTemp() float64 {
-	// 실제 센서 값이 있으면 그것을 기준으로 사용
-	if baseCpuTemp > 0 {
-		// CPU 사용량에 따른 온도 변화량을 줄임 (더 현실적으로)
-		cpuTempIncrease := lastCpuUsage * 0.2 // CPU 사용량 1%당 0.2°C 증가
-
-		// 작은 랜덤 변화 추가 (±0.5°C)
-		randomVariation := (rand.Float64() - 0.5) * 1.0
-
-		// 시간에 따른 미세한 변화
-		timeVariation := math.Sin(float64(time.Now().Unix())/120) * 0.5 // 더 작은 변화
-
-		currentTemp := baseCpuTemp + cpuTempIncrease + randomVariation + timeVariation
-
-		// 온도 범위 제한 (실제 센서 기준 ±10°C)
-		minTemp := baseCpuTemp - 10
-		maxTemp := baseCpuTemp + 15
-		if minTemp < 20 {
-			minTemp = 20
-		}
-		if maxTemp > 100 {
-			maxTemp = 100
-		}
-
-		if currentTemp < minTemp {
-			currentTemp = minTemp
-		} else if currentTemp > maxTemp {
-			currentTemp = maxTemp
-		}
-
-		// 이전 온도와 급격한 변화 방지 (더 작은 변화량)
-		if len(tempHistory) > 0 {
-			lastTemp := tempHistory[len(tempHistory)-1]
-			maxChange := 1.0 // 최대 1°C 변화
-			if currentTemp > lastTemp+maxChange {
-				currentTemp = lastTemp + maxChange
-			} else if currentTemp < lastTemp-maxChange {
-				currentTemp = lastTemp - maxChange
-			}
-		}
-
-		return currentTemp
-	}
-
-	// 실제 센서 값이 없을 때만 기본 시뮬레이션 사용
-	// CPU 사용량에 따른 온도 계산
-	cpuTempIncrease := lastCpuUsage * 0.4 // CPU 사용량 1%당 0.4°C 증가
-
-	// 약간의 랜덤 변화 추가 (±1.5°C)
-	randomVariation := (rand.Float64() - 0.5) * 3
-
-	// 시간에 따른 자연스러운 변화
-	timeVariation := math.Sin(float64(time.Now().Unix())/60) * 1.5
-
-	currentTemp := 35.0 + cpuTempIncrease + randomVariation + timeVariation
-
-	// 온도 범위 제한 (25°C ~ 95°C)
-	if currentTemp < 25 {
-		currentTemp = 25
-	} else if currentTemp > 95 {
-		currentTemp = 95
-	}
-
-	return currentTemp
-}
 
 func getCpuUsage() (float64, error) {
 	percentages, err := cpu.Percent(time.Second, false)

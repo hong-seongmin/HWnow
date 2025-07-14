@@ -1,7 +1,7 @@
 import type { Layout } from 'react-grid-layout';
 
 // Widget types
-export type WidgetType = 'cpu' | 'ram' | 'disk_read' | 'disk_write' | 'net_sent' | 'net_recv' | 'cpu_temp';
+export type WidgetType = 'cpu' | 'ram' | 'disk_read' | 'disk_write' | 'net_sent' | 'net_recv';
 
 // 위젯 설정 타입
 export interface WidgetConfig {
