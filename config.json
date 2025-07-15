@@ -1,0 +1,20 @@
+{
+  "server": {
+    "port": 9090,
+    "host": "localhost"
+  },
+  "database": {
+    "filename": "monitoring.db"
+  },
+  "monitoring": {
+    "interval_seconds": 2,
+    "enable_cpu_monitoring": true,
+    "enable_memory_monitoring": true,
+    "enable_disk_monitoring": true,
+    "enable_network_monitoring": true
+  },
+  "ui": {
+    "auto_open_browser": false,
+    "theme": "system"
+  }
+}
