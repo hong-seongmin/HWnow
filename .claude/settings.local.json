@@ -19,7 +19,20 @@
       "Bash(git config:*)",
       "Bash(git push:*)",
       "Bash(npm run build:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(cp:*)",
+      "Bash(copy ..HWnow-standalone.exe .)",
+      "Bash(dir)",
+      "Bash(kill:*)",
+      "Bash(./start.bat)",
+      "Bash(start.bat)",
+      "Bash(cmd:*)",
+      "Bash(powershell:*)",
+      "Bash(go:*)",
+      "Bash(./start-simple.bat:*)",
+      "Bash(npm:*)",
+      "Bash(./build-standalone.bat)",
+      "Bash(mv:*)"
     ],
     "deny": []
   }
