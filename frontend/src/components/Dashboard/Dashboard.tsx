@@ -6,6 +6,14 @@ import CpuWidget from '../widgets/CpuWidget';
 import MemoryWidget from '../widgets/MemoryWidget';
 import DiskWidget from '../widgets/DiskWidget';
 import NetworkWidget from '../widgets/NetworkWidget';
+import SystemUptimeWidget from '../widgets/SystemUptimeWidget';
+import DiskSpaceWidget from '../widgets/DiskSpaceWidget';
+import MemoryDetailWidget from '../widgets/MemoryDetailWidget';
+import BatteryWidget from '../widgets/BatteryWidget';
+import NetworkStatusWidget from '../widgets/NetworkStatusWidget';
+import ProcessMonitorWidget from '../widgets/ProcessMonitorWidget';
+import SystemLogWidget from '../widgets/SystemLogWidget';
+import GpuWidget from '../widgets/GpuWidget';
 import { useToast } from '../../contexts/ToastContext';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -21,6 +29,14 @@ const widgetMap: { [key in WidgetType]: React.ComponentType<{ widgetId: string; 
   disk_write: DiskWidget, // Both disk metrics use the same component
   net_sent: NetworkWidget,
   net_recv: NetworkWidget, // Both net metrics use the same component
+  gpu: GpuWidget,
+  system_uptime: SystemUptimeWidget,
+  process_monitor: ProcessMonitorWidget,
+  battery: BatteryWidget,
+  disk_space: DiskSpaceWidget,
+  network_status: NetworkStatusWidget,
+  memory_detail: MemoryDetailWidget,
+  system_log: SystemLogWidget,
 };
 
 const Dashboard = () => {
