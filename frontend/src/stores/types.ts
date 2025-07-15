@@ -1,7 +1,9 @@
 import type { Layout } from 'react-grid-layout';
 
 // Widget types
-export type WidgetType = 'cpu' | 'ram' | 'disk_read' | 'disk_write' | 'net_sent' | 'net_recv';
+export type WidgetType = 'cpu' | 'ram' | 'disk_read' | 'disk_write' | 'net_sent' | 'net_recv' | 
+  'gpu' | 'system_uptime' | 'process_monitor' | 'battery' | 'disk_space' | 'network_status' | 
+  'memory_detail' | 'system_log';
 
 // 위젯 설정 타입
 export interface WidgetConfig {
@@ -16,6 +18,49 @@ export interface WidgetConfig {
   updateInterval?: number;
   warningThreshold?: number;
   criticalThreshold?: number;
+  
+  // CPU 위젯
+  showCoreUsage?: boolean;
+  
+  // 디스크 관련
+  showReadSpeed?: boolean;
+  showWriteSpeed?: boolean;
+  showTotalSpace?: boolean;
+  showFreeSpace?: boolean;
+  
+  // 네트워크 관련
+  showSentSpeed?: boolean;
+  showRecvSpeed?: boolean;
+  showTotalSent?: boolean;
+  showTotalRecv?: boolean;
+  
+  // GPU 위젯
+  showGpuMemory?: boolean;
+  showGpuTemperature?: boolean;
+  showGpuPower?: boolean;
+  
+  // 프로세스 모니터링
+  processCount?: number;
+  sortBy?: 'cpu' | 'memory' | 'name';
+  
+  // 배터리 위젯
+  showBatteryTime?: boolean;
+  showChargingStatus?: boolean;
+  
+  // 메모리 상세
+  showPhysicalMemory?: boolean;
+  showVirtualMemory?: boolean;
+  showSwapMemory?: boolean;
+  
+  // 시스템 로그
+  logCount?: number;
+  logLevel?: 'all' | 'error' | 'warning' | 'info';
+  
+  // 네트워크 상태
+  showIpAddress?: boolean;
+  showConnectionStatus?: boolean;
+  showBandwidth?: boolean;
+  
   [key: string]: any; // 추가 설정을 위한 인덱스 시그니처
 }
 
