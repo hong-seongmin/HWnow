@@ -24,16 +24,6 @@ const CpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
   
   const config = widget?.config || {};
   const latestValue = cpuData.length > 0 ? cpuData[cpuData.length - 1] : 0;
-  
-  // 디버깅: 콘솔에 현재 상태 출력
-  console.log('CPU Widget Debug:', {
-    cpuInfo,
-    coreCount: Object.keys(cpuCores).length,
-    cores: Object.keys(cpuCores),
-    showCoreUsage: config.showCoreUsage,
-    cpuData: cpuData.slice(-3), // 최근 3개 CPU 데이터
-    latestValue
-  });
 
   // 설정된 데이터 포인트 수만큼만 표시
   const dataPoints = config.dataPoints || 50;
