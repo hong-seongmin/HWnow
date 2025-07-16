@@ -175,4 +175,39 @@
   width: 60px;
   height: 2px;
   background-color: var(--color-primary);
+}
+
+/* Empty page controls styling */
+.page-controls-content {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.empty-page-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl);
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.empty-page-controls svg {
+  margin-bottom: var(--spacing-lg);
+  opacity: 0.6;
+}
+
+.empty-page-controls h3 {
+  margin: 0 0 var(--spacing-md) 0;
+  font-size: 1.25rem;
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.empty-page-controls p {
+  margin: 0;
+  line-height: 1.6;
+  font-size: 0.9rem;
+  max-width: 400px;
 } 
