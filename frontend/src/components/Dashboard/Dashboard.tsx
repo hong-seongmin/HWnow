@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Responsive, WidthProvider } from 'react-grid-layout';
 import type { Layout } from 'react-grid-layout';
 import { useDashboardStore } from '../../stores/dashboardStore';
@@ -14,6 +14,7 @@ import NetworkStatusWidget from '../widgets/NetworkStatusWidget';
 import ProcessMonitorWidget from '../widgets/ProcessMonitorWidget';
 import SystemLogWidget from '../widgets/SystemLogWidget';
 import GpuWidget from '../widgets/GpuWidget';
+import { ContextMenu } from '../common/ContextMenu';
 import { useToast } from '../../contexts/ToastContext';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -47,6 +48,10 @@ const Dashboard = () => {
   const layouts = activePage?.layouts || [];
   const widgets = activePage?.widgets || [];
 
+  // Context menu state
+  const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
+  const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
+
   useEffect(() => {
     if (!isInitialized) {
       actions.initialize();
@@ -69,6 +74,16 @@ const Dashboard = () => {
     }
   };
 
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenuPosition({ x: e.clientX, y: e.clientY });
+    setIsContextMenuOpen(true);
+  };
+
+  const handleContextMenuClose = () => {
+    setIsContextMenuOpen(false);
+  };
+
   // 레이아웃에 크기 제한 추가
   const layoutsWithConstraints = layouts.map(layout => ({
     ...layout,
@@ -84,42 +99,58 @@ const Dashboard = () => {
   
   if (!activePage || widgets.length === 0) {
     return (
-      <div className="empty-dashboard">
-        <h3>Dashboard is empty</h3>
-        <p>Add some widgets to get started!</p>
+      <div className="dashboard-container" onContextMenu={handleContextMenu}>
+        <div className="empty-dashboard">
+          <h3>Dashboard is empty</h3>
+          <p>Right-click to add widgets to get started!</p>
+        </div>
+        
+        <ContextMenu
+          isOpen={isContextMenuOpen}
+          position={contextMenuPosition}
+          onClose={handleContextMenuClose}
+        />
       </div>
     );
   }
 
   return (
-    <ResponsiveGridLayout
-      className="layout"
-      layouts={{ lg: layoutsWithConstraints }}
-      breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-      cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
-      rowHeight={100}
-      onLayoutChange={handleLayoutChange}
-      draggableHandle=".widget-header"
-      draggableCancel=".widget-action-button, .remove-widget-button"
-      compactType={null}
-      preventCollision={true}
-      resizeHandles={['se', 'sw', 'ne', 'nw']}
-      isResizable={true}
-      isDraggable={true}
-    >
-      {widgets.map((widget) => {
-        const WidgetComponent = widgetMap[widget.type];
-        return (
-          <div key={widget.i} className="widget-wrapper">
-            {WidgetComponent ? (
-              <WidgetComponent widgetId={widget.i} onRemove={() => handleRemoveWidget(widget.i)} />
-            ) : (
-              <div>Unknown Widget</div>
-            )}
-          </div>
-        );
-      })}
-    </ResponsiveGridLayout>
+    <div className="dashboard-container" onContextMenu={handleContextMenu}>
+      <ResponsiveGridLayout
+        className="layout"
+        layouts={{ lg: layoutsWithConstraints }}
+        breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
+        cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
+        rowHeight={100}
+        onLayoutChange={handleLayoutChange}
+        draggableHandle=".widget-header"
+        draggableCancel=".widget-action-button, .remove-widget-button"
+        compactType={null}
+        preventCollision={true}
+        resizeHandles={['se', 'sw', 'ne', 'nw']}
+        isResizable={true}
+        isDraggable={true}
+      >
+        {widgets.map((widget) => {
+          const WidgetComponent = widgetMap[widget.type];
+          return (
+            <div key={widget.i} className="widget-wrapper">
+              {WidgetComponent ? (
+                <WidgetComponent widgetId={widget.i} onRemove={() => handleRemoveWidget(widget.i)} />
+              ) : (
+                <div>Unknown Widget</div>
+              )}
+            </div>
+          );
+        })}
+      </ResponsiveGridLayout>
+      
+      <ContextMenu
+        isOpen={isContextMenuOpen}
+        position={contextMenuPosition}
+        onClose={handleContextMenuClose}
+      />
+    </div>
   );
 };
 
