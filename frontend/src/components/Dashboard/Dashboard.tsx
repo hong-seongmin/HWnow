@@ -15,6 +15,8 @@ import ProcessMonitorWidget from '../widgets/ProcessMonitorWidget';
 import SystemLogWidget from '../widgets/SystemLogWidget';
 import GpuWidget from '../widgets/GpuWidget';
 import { ContextMenu } from '../common/ContextMenu';
+import { WidgetFullscreen } from '../common/WidgetModal';
+import { useWidgetZoom } from '../../hooks/useWidgetZoom';
 import { useToast } from '../../contexts/ToastContext';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -23,7 +25,7 @@ import type { WidgetType } from '../../stores/types';
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
 
-const widgetMap: { [key in WidgetType]: React.ComponentType<{ widgetId: string; onRemove: () => void }> } = {
+const widgetMap: { [key in WidgetType]: React.ComponentType<{ widgetId: string; onRemove: () => void; isExpanded?: boolean; onExpand?: () => void }> } = {
   cpu: CpuWidget,
   ram: MemoryWidget,
   disk_read: DiskWidget,
@@ -51,6 +53,9 @@ const Dashboard = () => {
   // Context menu state
   const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
   const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
+
+  // Widget zoom state
+  const { expandedWidget, expandWidget, collapseWidget } = useWidgetZoom();
 
   useEffect(() => {
     if (!isInitialized) {
@@ -136,7 +141,11 @@ const Dashboard = () => {
           return (
             <div key={widget.i} className="widget-wrapper">
               {WidgetComponent ? (
-                <WidgetComponent widgetId={widget.i} onRemove={() => handleRemoveWidget(widget.i)} />
+                <WidgetComponent 
+                  widgetId={widget.i} 
+                  onRemove={() => handleRemoveWidget(widget.i)}
+                  onExpand={() => expandWidget(widget.i)}
+                />
               ) : (
                 <div>Unknown Widget</div>
               )}
@@ -150,6 +159,16 @@ const Dashboard = () => {
         position={contextMenuPosition}
         onClose={handleContextMenuClose}
       />
+      
+      {/* Widget Fullscreen */}
+      {expandedWidget && (
+        <WidgetFullscreen
+          widgetId={expandedWidget}
+          widgetType={widgets.find(w => w.i === expandedWidget)?.type!}
+          isOpen={!!expandedWidget}
+          onClose={collapseWidget}
+        />
+      )}
     </div>
   );
 };

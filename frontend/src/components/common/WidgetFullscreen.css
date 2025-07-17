@@ -1,0 +1,414 @@
+/* 위젯 전체화면 스타일 */
+.widget-fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: var(--color-background);
+  z-index: 9999;
+  overflow: hidden;
+  animation: fadeIn 0.3s ease-out;
+  
+  /* CSS 변수를 전체화면 컨텍스트에서 강제 정의 */
+  --color-primary: #2196f3;
+  --color-warning: #ff9800;
+  --color-error: #f44336;
+  --color-success: #4caf50;
+  --color-surface: #ffffff;
+  --color-border: #e0e0e0;
+  --color-text-primary: #212121;
+  --color-text-secondary: #757575;
+  --radius-sm: 4px;
+}
+
+/* 다크 모드에서 전체화면 CSS 변수 재정의 */
+[data-theme="dark"] .widget-fullscreen {
+  --color-primary: #90caf9;
+  --color-warning: #ffb74d;
+  --color-error: #ef5350;
+  --color-success: #81c784;
+  --color-surface: #1e1e1e;
+  --color-border: #333333;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #b0b0b0;
+}
+
+/* 종료 버튼 - 우상단 고정 */
+.widget-fullscreen-close {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  z-index: 10001;
+  backdrop-filter: blur(4px);
+}
+
+.widget-fullscreen-close:hover {
+  background: rgba(0, 0, 0, 0.8);
+  transform: scale(1.1);
+}
+
+.widget-fullscreen-close:active {
+  transform: scale(0.9);
+}
+
+/* ESC 힌트 - 좌상단 고정 */
+.widget-fullscreen-hint {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  z-index: 10001;
+  backdrop-filter: blur(4px);
+}
+
+.widget-fullscreen-hint kbd {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.8rem;
+  font-family: monospace;
+  color: white;
+}
+
+/* 전체화면 콘텐츠 */
+.widget-fullscreen-content {
+  width: 100vw;
+  height: 100vh;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 스케일링 방식으로 위젯 확대 */
+.widget-fullscreen-scaled {
+  transform: scale(3);
+  transform-origin: center center;
+  width: 400px;
+  height: 300px;
+}
+
+.widget-fullscreen-scaled .widget {
+  width: 400px !important;
+  height: 300px !important;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.widget-fullscreen-widget {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 전체화면 모드에서 위젯 스타일 오버라이드 */
+.widget-fullscreen-widget .widget {
+  width: 100%;
+  height: 100%;
+  background: var(--color-background);
+  padding: 60px 40px 40px 40px; /* 상단 여백을 줘서 종료 버튼과 겹치지 않도록 */
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 전체화면에서 위젯 헤더 숨기기 */
+.widget-fullscreen-widget .widget-header {
+  display: none;
+}
+
+/* 전체화면에서 위젯 콘텐츠 확장 */
+.widget-fullscreen-widget .widget-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* 전체화면에서 위젯 콘텐츠 강제 표시 */
+.widget-fullscreen-widget .widget-content > * {
+  display: block !important;
+  visibility: visible !important;
+}
+
+/* 전체화면에서 차트 크기 확장 */
+.widget-fullscreen-widget .recharts-wrapper {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 600px !important;
+}
+
+.widget-fullscreen-widget .recharts-responsive-container {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 600px !important;
+}
+
+/* 차트 컨테이너 크기 강제 설정 */
+.widget-fullscreen-widget .chart-container {
+  width: 100%;
+  height: 100%;
+  flex: 1;
+}
+
+/* ResponsiveContainer 크기 강제 설정 */
+.widget-fullscreen-widget .widget-content > div {
+  width: 100%;
+  height: 100%;
+  flex: 1;
+}
+
+/* 위젯 차트 크기 설정 */
+.widget-fullscreen-widget .widget-chart {
+  width: 100% !important;
+  height: 100% !important;
+  flex: 1 !important;
+  min-height: 400px !important;
+  display: flex !important;
+  visibility: visible !important;
+}
+
+/* 전체화면에서 차트 강제 표시 */
+.widget-fullscreen-widget .widget-chart,
+.widget-fullscreen-widget .chart-container {
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  justify-content: center !important;
+  align-items: center !important;
+}
+
+/* 전체화면에서 SVG 차트 색상 및 표시 강제 설정 */
+.widget-fullscreen-widget .recharts-wrapper svg {
+  visibility: visible !important;
+  opacity: 1 !important;
+  display: block !important;
+}
+
+.widget-fullscreen-widget .recharts-wrapper svg path {
+  visibility: visible !important;
+  opacity: 1 !important;
+  stroke-width: 2px !important;
+}
+
+.widget-fullscreen-widget .recharts-wrapper svg .recharts-area-area {
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.widget-fullscreen-widget .recharts-wrapper svg .recharts-line {
+  visibility: visible !important;
+  opacity: 1 !important;
+  stroke-width: 2px !important;
+}
+
+.widget-fullscreen-widget .recharts-wrapper svg .recharts-bar {
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+/* 전체화면에서 차트 컨테이너 강제 크기 설정 */
+.widget-fullscreen-widget .recharts-wrapper {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  position: relative !important;
+}
+
+.widget-fullscreen-widget .recharts-surface {
+  overflow: visible !important;
+}
+
+/* 전체화면에서 위젯 값 표시 크기 확장 */
+.widget-fullscreen-widget .widget-value {
+  font-size: 4rem;
+  margin-bottom: 24px;
+}
+
+.widget-fullscreen-widget .widget-value-unit {
+  font-size: 2.5rem;
+  margin-left: 8px;
+}
+
+/* 전체화면에서 위젯 정보 표시 크기 확장 */
+.widget-fullscreen-widget .widget-info {
+  font-size: 1.2rem;
+  margin-bottom: 24px;
+}
+
+.widget-fullscreen-widget .widget-info-item {
+  margin-bottom: 12px;
+}
+
+.widget-fullscreen-widget .widget-info-label {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.widget-fullscreen-widget .widget-info-value {
+  font-size: 1.2rem;
+}
+
+/* 전체화면에서 테이블 스타일 확장 */
+.widget-fullscreen-widget table {
+  font-size: 1.1rem;
+}
+
+.widget-fullscreen-widget th {
+  font-size: 1.2rem;
+  padding: 16px;
+}
+
+.widget-fullscreen-widget td {
+  padding: 14px;
+}
+
+/* 전체화면에서 로그 스타일 확장 */
+.widget-fullscreen-widget .log-entry {
+  font-size: 1rem;
+  line-height: 1.6;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+/* 전체화면에서 프로세스 모니터 스타일 확장 */
+.widget-fullscreen-widget .process-table {
+  font-size: 1rem;
+}
+
+.widget-fullscreen-widget .process-table th {
+  font-size: 1.1rem;
+  padding: 12px;
+}
+
+.widget-fullscreen-widget .process-table td {
+  padding: 10px;
+}
+
+/* 전체화면에서 배터리 아이콘 확장 */
+.widget-fullscreen-widget .battery-icon {
+  width: 120px;
+  height: 60px;
+}
+
+/* 전체화면에서 네트워크 상태 표시 확장 */
+.widget-fullscreen-widget .network-interface {
+  font-size: 1.1rem;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+/* 전체화면에서 디스크 공간 차트 확장 */
+.widget-fullscreen-widget .pie-chart {
+  width: 100%;
+  height: 500px;
+}
+
+/* 전체화면 애니메이션 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 전체화면 활성 상태에서 기본 스크롤 숨기기 */
+.widget-fullscreen-active {
+  overflow: hidden;
+}
+
+/* 반응형 디자인 */
+@media (max-width: 1200px) {
+  .widget-fullscreen-header {
+    padding: 16px 24px;
+  }
+  
+  .widget-fullscreen-title {
+    font-size: 1.5rem;
+  }
+  
+  .widget-fullscreen-content {
+    padding: 24px;
+  }
+  
+  .widget-fullscreen-widget {
+    max-width: 100%;
+    max-height: 100%;
+  }
+  
+  .widget-fullscreen-widget .widget {
+    padding: 24px;
+  }
+  
+  .widget-fullscreen-widget .widget-value {
+    font-size: 3rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .widget-fullscreen-header {
+    padding: 12px 16px;
+    min-height: 60px;
+  }
+  
+  .widget-fullscreen-title {
+    font-size: 1.25rem;
+  }
+  
+  .widget-fullscreen-controls {
+    gap: 12px;
+  }
+  
+  .widget-fullscreen-hint {
+    display: none; /* 모바일에서는 ESC 힌트 숨기기 */
+  }
+  
+  .widget-fullscreen-close {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .widget-fullscreen-content {
+    padding: 16px;
+  }
+  
+  .widget-fullscreen-widget .widget {
+    padding: 16px;
+  }
+  
+  .widget-fullscreen-widget .widget-value {
+    font-size: 2.5rem;
+  }
+  
+  .widget-fullscreen-widget .widget-info {
+    font-size: 1rem;
+  }
+}
