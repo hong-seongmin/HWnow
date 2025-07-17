@@ -10,9 +10,11 @@ import './widget.css';
 interface WidgetProps {
   widgetId: string;
   onRemove: () => void;
+  isExpanded?: boolean;
+  onExpand?: () => void;
 }
 
-const DiskWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
+const DiskWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = false, onExpand }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const diskReadData = useSystemResourceStore((state) => state.data.disk_read);
   const diskWriteData = useSystemResourceStore((state) => state.data.disk_write);
@@ -41,7 +43,8 @@ const DiskWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
   const showWriteSpeed = config.showWriteSpeed !== false;
   const showTotalSpace = config.showTotalSpace || false;
   const showFreeSpace = config.showFreeSpace || false;
-  const showGraph = config.showGraph !== false; // 기본값 true
+  const showGraph = config.showGraph !== false;
+  const chartOnlyMode = config.chartOnlyMode === true; // 기본값 true
 
   const handleSettingsClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -77,6 +80,19 @@ const DiskWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
                 <path d="M12 1v6m0 6v6m3.22-10.22l4.24-4.24m-4.24 10.46l4.24 4.24M21 12h-6m-6 0H3m10.22 3.22l-4.24 4.24m4.24-10.46L8.98 4.76" />
               </svg>
             </button>
+            {!isExpanded && onExpand && (
+              <button
+                className="widget-action-button expand-button"
+                onClick={onExpand}
+                title="Expand Disk widget"
+                aria-label="Expand Disk widget"
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>
+                </svg>
+              </button>
+            )}
           </div>
           <div className="widget-title">
             <div className="widget-icon" aria-hidden="true">
@@ -100,8 +116,9 @@ const DiskWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
           </div>
         </div>
         
-        <div className="widget-content">
-          <div className="widget-info" role="status" aria-live="polite" aria-atomic="true">
+        <div className={`widget-content ${chartOnlyMode ? 'chart-only-mode' : ''}`}>
+          {!chartOnlyMode && (
+            <div className="widget-info" role="status" aria-live="polite" aria-atomic="true">
             {showReadSpeed && (
               <div className="widget-info-item">
                 <span className="widget-info-label">Read:</span>
@@ -131,6 +148,7 @@ const DiskWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
               </div>
             )}
           </div>
+          )}
           
           {showGraph && (
             <div className="widget-chart" role="img" aria-label="Disk I/O trend chart">

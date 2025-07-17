@@ -9,9 +9,11 @@ import './widget.css';
 interface WidgetProps {
   widgetId: string;
   onRemove: () => void;
+  isExpanded?: boolean;
+  onExpand?: () => void;
 }
 
-const CpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
+const CpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = false, onExpand }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const cpuData = useSystemResourceStore((state) => state.data.cpu);
   const cpuCores = useSystemResourceStore((state) => state.data.cpu_cores);
@@ -57,8 +59,9 @@ const CpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
   };
 
   const showPercentage = config.showPercentage !== false;
-  const showGraph = config.showGraph !== false; // 기본값 true
+  const showGraph = config.showGraph !== false;
   const showCoreUsage = config.showCoreUsage === true;
+  const chartOnlyMode = config.chartOnlyMode === true;
 
   const handleSettingsClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -86,6 +89,19 @@ const CpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
                 <path d="M12 1v6m0 6v6m3.22-10.22l4.24-4.24m-4.24 10.46l4.24 4.24M21 12h-6m-6 0H3m10.22 3.22l-4.24 4.24m4.24-10.46L8.98 4.76" />
               </svg>
             </button>
+            {!isExpanded && onExpand && (
+              <button
+                className="widget-action-button expand-button"
+                onClick={onExpand}
+                title="Expand CPU widget"
+                aria-label="Expand CPU widget"
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>
+                </svg>
+              </button>
+            )}
           </div>
           <div className="widget-title">
             <div className="widget-icon" aria-hidden="true">
@@ -117,8 +133,8 @@ const CpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
           </div>
         </div>
         
-        <div className="widget-content">
-          {showPercentage && (
+        <div className={`widget-content ${chartOnlyMode ? 'chart-only-mode' : ''}`}>
+          {!chartOnlyMode && showPercentage && (
             <div 
               className="widget-value" 
               role="status" 
@@ -133,28 +149,30 @@ const CpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
             </div>
           )}
           
-          <div className="widget-info" role="complementary" aria-label="CPU information">
-            <div className="widget-info-item cpu-model">
-              <span className="widget-info-label">Model:</span>
-              <span className="widget-info-value" title={cpuInfo?.model || 'Loading...'}>
-                {cpuInfo?.model ? cpuInfo.model.replace(/CPU @ \d+\.\d+GHz/, '').trim() : 'Loading...'}
-              </span>
+          {!chartOnlyMode && (
+            <div className="widget-info" role="complementary" aria-label="CPU information">
+              <div className="widget-info-item cpu-model">
+                <span className="widget-info-label">Model:</span>
+                <span className="widget-info-value" title={cpuInfo?.model || 'Loading...'}>
+                  {cpuInfo?.model ? cpuInfo.model.replace(/CPU @ \d+\.\d+GHz/, '').trim() : 'Loading...'}
+                </span>
+              </div>
+              <div className="widget-info-item">
+                <span className="widget-info-label">Cores:</span>
+                <span className="widget-info-value" aria-label={`${cpuInfo?.cores || 'Loading'} cores`}>
+                  {cpuInfo?.cores || 'Loading'}
+                </span>
+              </div>
+              <div className="widget-info-item">
+                <span className="widget-info-label">Threads:</span>
+                <span className="widget-info-value" aria-label={`${Object.keys(cpuCores).length || 'Loading'} threads`}>
+                  {Object.keys(cpuCores).length || 'Loading'}
+                </span>
+              </div>
             </div>
-            <div className="widget-info-item">
-              <span className="widget-info-label">Cores:</span>
-              <span className="widget-info-value" aria-label={`${cpuInfo?.cores || 'Loading'} cores`}>
-                {cpuInfo?.cores || 'Loading'}
-              </span>
-            </div>
-            <div className="widget-info-item">
-              <span className="widget-info-label">Threads:</span>
-              <span className="widget-info-value" aria-label={`${Object.keys(cpuCores).length || 'Loading'} threads`}>
-                {Object.keys(cpuCores).length || 'Loading'}
-              </span>
-            </div>
-          </div>
+          )}
           
-          {showCoreUsage && (
+          {!chartOnlyMode && showCoreUsage && (
             <div className="widget-core-usage" role="region" aria-label="CPU core usage">
               <h4 className="widget-core-title">코어별 사용률</h4>
               <div className="core-usage-grid">
@@ -192,7 +210,7 @@ const CpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
           )}
           
           {showGraph && (
-            <div className="widget-chart" role="img" aria-label="CPU usage trend chart">
+            <div className="widget-chart chart-container" role="img" aria-label="CPU usage trend chart">
               <ResponsiveContainer width="100%" height="100%">
                 {config.chartType === 'line' ? (
                   <LineChart data={chartData} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>

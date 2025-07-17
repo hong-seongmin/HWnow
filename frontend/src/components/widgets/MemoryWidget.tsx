@@ -9,9 +9,11 @@ import './widget.css';
 interface WidgetProps {
   widgetId: string;
   onRemove: () => void;
+  isExpanded?: boolean;
+  onExpand?: () => void;
 }
 
-const MemoryWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
+const MemoryWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = false, onExpand }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const ramData = useSystemResourceStore((state) => state.data.ram);
 
@@ -53,6 +55,7 @@ const MemoryWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
   const showUsedMemory = config.showUsedMemory !== false;
   const showTotalMemory = config.showTotalMemory !== false;
   const showGraph = config.showGraph !== false; // 기본값 true
+  const chartOnlyMode = config.chartOnlyMode === true;
 
   const handleSettingsClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -81,6 +84,19 @@ const MemoryWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
                 <path d="M12 1v6m0 6v6m3.22-10.22l4.24-4.24m-4.24 10.46l4.24 4.24M21 12h-6m-6 0H3m10.22 3.22l-4.24 4.24m4.24-10.46L8.98 4.76" />
               </svg>
             </button>
+            {!isExpanded && onExpand && (
+              <button
+                className="widget-action-button expand-button"
+                onClick={onExpand}
+                title="Expand Memory widget"
+                aria-label="Expand Memory widget"
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>
+                </svg>
+              </button>
+            )}
           </div>
           <div className="widget-title">
             <div className="widget-icon" aria-hidden="true">
@@ -95,7 +111,7 @@ const MemoryWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
             <span>Memory Usage</span>
           </div>
           <div className="widget-actions">
-             <button
+            <button
               className="remove-widget-button"
               onClick={onRemove}
               title="Remove Memory widget"
@@ -107,8 +123,8 @@ const MemoryWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
           </div>
         </div>
         
-        <div className="widget-content">
-          {showPercentage && (
+        <div className={`widget-content ${chartOnlyMode ? 'chart-only-mode' : ''}`}>
+          {!chartOnlyMode && showPercentage && (
             <div className="widget-value">
               <span className="widget-value-number" style={{ color: valueColor }}>
                 {latestValue.toFixed(1)}
@@ -117,7 +133,7 @@ const MemoryWidget: React.FC<WidgetProps> = ({ widgetId, onRemove }) => {
             </div>
           )}
         
-          {(showUsedMemory || showTotalMemory) && (
+          {!chartOnlyMode && (showUsedMemory || showTotalMemory) && (
             <div className="widget-info">
               {showUsedMemory && (
                 <div className="widget-info-item">
