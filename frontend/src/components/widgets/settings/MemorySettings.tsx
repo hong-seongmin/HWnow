@@ -19,6 +19,7 @@ const defaultConfig: WidgetConfig = {
   updateInterval: 1,
   warningThreshold: 75,
   criticalThreshold: 90,
+  chartOnlyMode: false,
 };
 
 export const MemorySettings: React.FC<MemorySettingsProps> = ({ widget }) => {
@@ -52,6 +53,18 @@ export const MemorySettings: React.FC<MemorySettingsProps> = ({ widget }) => {
             onChange={handleConfigChange}
           />
           그래프 표시
+        </label>
+      </div>
+
+      <div className="form-group">
+        <label>
+          <input
+            type="checkbox"
+            name="chartOnlyMode"
+            checked={config.chartOnlyMode}
+            onChange={handleConfigChange}
+          />
+          차트만 표시 (수치/정보 숨김)
         </label>
       </div>
 

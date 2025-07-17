@@ -15,6 +15,7 @@ const defaultConfig: WidgetConfig = {
   showGraph: true, // 기본적으로 그래프 표시
   showPercentage: true,
   showCoreUsage: false,
+  chartOnlyMode: false, // 차트만 표시 모드
   updateInterval: 1,
   warningThreshold: 75,
   criticalThreshold: 90,
@@ -75,6 +76,18 @@ export const CpuSettings: React.FC<CpuSettingsProps> = ({ widget }) => {
             onChange={handleConfigChange}
           />
           코어별 사용률 표시
+        </label>
+      </div>
+
+      <div className="form-group">
+        <label>
+          <input
+            type="checkbox"
+            name="chartOnlyMode"
+            checked={config.chartOnlyMode}
+            onChange={handleConfigChange}
+          />
+          차트만 표시 (수치/정보 숨김)
         </label>
       </div>
 

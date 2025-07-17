@@ -8,6 +8,57 @@
   color: var(--color-text-primary);
 }
 
+/* 위젯 확대 버튼 스타일 */
+.widget-action-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  opacity: 0;
+  transition: all var(--transition-fast);
+  margin-right: var(--spacing-xs);
+}
+
+.widget-wrapper:hover .widget-action-button {
+  opacity: 1;
+}
+
+.widget-action-button:hover {
+  background-color: var(--color-primary);
+  color: var(--color-text-on-primary);
+  transform: scale(1.1);
+}
+
+.widget-action-button:active {
+  transform: scale(0.95);
+}
+
+.expand-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* 차트만 표시 모드 스타일 */
+.widget-content.chart-only-mode {
+  padding: 0;
+}
+
+.widget-content.chart-only-mode .widget-chart {
+  height: 100%;
+  flex: 1;
+}
+
+.widget-content.chart-only-mode .chart-container {
+  height: 100%;
+  min-height: 200px;
+}
+
 /* CPU 모델명 스타일 */
 .cpu-model .widget-info-value {
   font-size: 0.875rem;

@@ -20,6 +20,7 @@ const defaultConfig: WidgetConfig = {
   updateInterval: 1,
   warningThreshold: 80,
   criticalThreshold: 100,
+  chartOnlyMode: false,
 };
 
 export const DiskSettings: React.FC<DiskSettingsProps> = ({ widget }) => {
@@ -91,6 +92,18 @@ export const DiskSettings: React.FC<DiskSettingsProps> = ({ widget }) => {
             onChange={handleConfigChange}
           />
           쓰기 속도 표시
+        </label>
+      </div>
+
+      <div className="form-group">
+        <label>
+          <input
+            type="checkbox"
+            name="chartOnlyMode"
+            checked={config.chartOnlyMode}
+            onChange={handleConfigChange}
+          />
+          차트만 표시 (수치/정보 숨김)
         </label>
       </div>
 
