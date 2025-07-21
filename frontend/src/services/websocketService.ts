@@ -9,7 +9,8 @@ const ALL_WIDGET_TYPES: WidgetType[] = ['cpu', 'ram', 'disk_read', 'disk_write',
 const ADDITIONAL_METRIC_TYPES = [
   'system_uptime', 'disk_total', 'disk_used', 'disk_free', 'disk_usage_percent',
   'memory_physical', 'memory_virtual', 'memory_swap',
-  'battery_percent', 'battery_plugged'
+  'battery_percent', 'battery_plugged',
+  'gpu_usage', 'gpu_memory_used', 'gpu_memory_total', 'gpu_temperature', 'gpu_power'
 ];
 
 const isValidWidgetType = (type: any): type is WidgetType => {
@@ -34,7 +35,8 @@ const connect = () => {
       // Debug logging for new metrics
       if (message.type === 'system_uptime' || message.type.startsWith('disk_') || 
           message.type.startsWith('memory_') || message.type.startsWith('network_') || 
-          message.type.startsWith('process_') || message.type.startsWith('battery_')) {
+          message.type.startsWith('process_') || message.type.startsWith('battery_') ||
+          message.type.startsWith('gpu_')) {
         console.log('WebSocket message:', message.type, message.data);
       }
 
@@ -42,6 +44,12 @@ const connect = () => {
       if (message.type === 'cpu_info' && typeof message.data?.value === 'number' && message.data?.info) {
         setData(message.type, message.data.value, message.data.info);
         console.log('Received CPU info:', message.data.info, 'Cores:', message.data.value);
+      }
+      
+      // Handle GPU info
+      else if (message.type === 'gpu_info' && message.data?.info) {
+        setData(message.type, message.data.value || 1.0, message.data.info);
+        console.log('Received GPU info:', message.data.info);
       }
       
       // Handle CPU core data, additional metrics, network status, or process data
