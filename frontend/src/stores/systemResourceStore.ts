@@ -33,6 +33,14 @@ export type SystemResourceData = {
     cpu: number;
     memory: number;
   }>;
+  
+  // GPU 관련
+  gpu_usage: number[];
+  gpu_memory_used: number[];
+  gpu_memory_total: number[];
+  gpu_temperature: number[];
+  gpu_power: number[];
+  gpu_info: Array<{ info: string }>;
 }
 
 interface SystemResourceState {
@@ -68,6 +76,14 @@ const initialState: SystemResourceData = {
   
   // 프로세스 정보
   processes: [],
+  
+  // GPU 관련
+  gpu_usage: [],
+  gpu_memory_used: [],
+  gpu_memory_total: [],
+  gpu_temperature: [],
+  gpu_power: [],
+  gpu_info: [],
 };
 
 export const useSystemResourceStore = create<SystemResourceState>((set) => ({
@@ -143,6 +159,19 @@ export const useSystemResourceStore = create<SystemResourceState>((set) => ({
             },
           };
         }
+      }
+      
+      // Handle GPU info separately
+      if (type === 'gpu_info' && info) {
+        const currentGpuInfo = state.data.gpu_info || [];
+        const newGpuInfo = [...currentGpuInfo, { info }].slice(-state.maxDataPoints);
+        
+        return {
+          data: {
+            ...state.data,
+            gpu_info: newGpuInfo,
+          },
+        };
       }
       
       // Handle regular data types
