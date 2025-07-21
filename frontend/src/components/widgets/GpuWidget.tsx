@@ -1,5 +1,6 @@
 import { memo, useState } from 'react';
 import { ResponsiveContainer, AreaChart, LineChart, BarChart, XAxis, YAxis, Tooltip, Area, Line, Bar } from 'recharts';
+import { useSystemResourceStore } from '../../stores/systemResourceStore';
 import { useDashboardStore } from '../../stores/dashboardStore';
 import { SettingsModal } from '../common/SettingsModal';
 import './widget.css';
@@ -11,18 +12,16 @@ interface WidgetProps {
   onExpand?: () => void;
 }
 
-// 모의 GPU 데이터 (실제로는 백엔드에서 받아와야 함)
-interface GpuData {
-  usage: number;
-  memory: number;
-  temperature: number;
-  power: number;
-  clock: number;
-}
-
 const GpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = false, onExpand }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [gpuData, setGpuData] = useState<GpuData[]>([]);
+  
+  // 실제 GPU 데이터 사용
+  const gpuUsageData = useSystemResourceStore((state) => state.data.gpu_usage);
+  const gpuMemoryUsedData = useSystemResourceStore((state) => state.data.gpu_memory_used);
+  const gpuMemoryTotalData = useSystemResourceStore((state) => state.data.gpu_memory_total);
+  const gpuTemperatureData = useSystemResourceStore((state) => state.data.gpu_temperature);
+  const gpuPowerData = useSystemResourceStore((state) => state.data.gpu_power);
+  const gpuInfo = useSystemResourceStore((state) => state.data.gpu_info);
 
   const widget = useDashboardStore((state) => {
     const page = state.pages[state.activePageIndex];
@@ -35,43 +34,31 @@ const GpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = fal
   const showGpuPower = config.showGpuPower !== false;
   const showGraph = config.showGraph !== false;
 
-  // 모의 GPU 데이터 생성 (실제로는 백엔드에서 받아와야 함)
-  const generateMockGpuData = () => {
-    const mockData: GpuData[] = [];
-    for (let i = 0; i < 50; i++) {
-      mockData.push({
-        usage: Math.random() * 100,
-        memory: Math.random() * 100,
-        temperature: 45 + Math.random() * 35, // 45-80°C
-        power: 100 + Math.random() * 200, // 100-300W
-        clock: 1400 + Math.random() * 600, // 1400-2000 MHz
-      });
-    }
-    return mockData;
-  };
+  // 최신 GPU 데이터 계산
+  const latestUsage = gpuUsageData.length > 0 ? gpuUsageData[gpuUsageData.length - 1] : 0;
+  const latestMemoryUsed = gpuMemoryUsedData.length > 0 ? gpuMemoryUsedData[gpuMemoryUsedData.length - 1] : 0;
+  const latestMemoryTotal = gpuMemoryTotalData.length > 0 ? gpuMemoryTotalData[gpuMemoryTotalData.length - 1] : 1;
+  const latestTemperature = gpuTemperatureData.length > 0 ? gpuTemperatureData[gpuTemperatureData.length - 1] : 0;
+  const latestPower = gpuPowerData.length > 0 ? gpuPowerData[gpuPowerData.length - 1] : 0;
+  const gpuName = gpuInfo.length > 0 ? gpuInfo[gpuInfo.length - 1].info : 'Unknown GPU';
 
-  // 초기 데이터 설정
-  if (gpuData.length === 0) {
-    setGpuData(generateMockGpuData());
-  }
-
-  const latestData = gpuData.length > 0 ? gpuData[gpuData.length - 1] : {
-    usage: 0,
-    memory: 0,
-    temperature: 0,
-    power: 0,
-    clock: 0,
-  };
+  // 메모리 사용률 계산 (퍼센트)
+  const memoryUsagePercent = latestMemoryTotal > 0 ? (latestMemoryUsed / latestMemoryTotal) * 100 : 0;
 
   // 설정된 데이터 포인트 수만큼만 표시
   const dataPoints = config.dataPoints || 50;
-  const displayData = gpuData.slice(-dataPoints);
+  const usageChartData = gpuUsageData.slice(-dataPoints);
+  const memoryChartData = gpuMemoryUsedData.slice(-dataPoints).map((used, index) => {
+    const total = gpuMemoryTotalData[Math.min(index, gpuMemoryTotalData.length - 1)] || 1;
+    return (used / total) * 100;
+  });
+  const temperatureChartData = gpuTemperatureData.slice(-dataPoints);
 
-  const chartData = displayData.map((data, index) => ({
+  const chartData = usageChartData.map((usage, index) => ({
     time: index,
-    usage: data.usage,
-    memory: data.memory,
-    temperature: data.temperature,
+    usage: usage,
+    memory: memoryChartData[index] || 0,
+    temperature: temperatureChartData[index] || 0,
   }));
 
   // GPU 사용률에 따른 색상 결정
@@ -166,10 +153,10 @@ const GpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = fal
             role="status" 
             aria-live="polite" 
             aria-atomic="true"
-            aria-label={`GPU usage is ${latestData.usage.toFixed(1)} percent`}
+            aria-label={`GPU usage is ${latestUsage.toFixed(1)} percent`}
           >
-            <span className="widget-value-number" style={{ color: getGpuColor(latestData.usage, 'usage') }}>
-              {latestData.usage.toFixed(1)}
+            <span className="widget-value-number" style={{ color: getGpuColor(latestUsage, 'usage') }}>
+              {latestUsage.toFixed(1)}
             </span>
             <span className="widget-value-unit" aria-label="percent">%</span>
           </div>
@@ -178,28 +165,22 @@ const GpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = fal
             <div className="widget-info-item">
               <span className="widget-info-label">Model:</span>
               <span className="widget-info-value">
-                NVIDIA RTX 4080
-              </span>
-            </div>
-            <div className="widget-info-item">
-              <span className="widget-info-label">Clock:</span>
-              <span className="widget-info-value">
-                {latestData.clock.toFixed(0)} MHz
+                {gpuName}
               </span>
             </div>
             {showGpuMemory && (
               <div className="widget-info-item">
                 <span className="widget-info-label">Memory:</span>
-                <span className="widget-info-value" style={{ color: getGpuColor(latestData.memory, 'memory') }}>
-                  {latestData.memory.toFixed(1)}%
+                <span className="widget-info-value" style={{ color: getGpuColor(memoryUsagePercent, 'memory') }}>
+                  {memoryUsagePercent.toFixed(1)}%
                 </span>
               </div>
             )}
             {showGpuTemperature && (
               <div className="widget-info-item">
                 <span className="widget-info-label">Temperature:</span>
-                <span className="widget-info-value" style={{ color: getGpuColor(latestData.temperature, 'temperature') }}>
-                  {latestData.temperature.toFixed(1)}°C
+                <span className="widget-info-value" style={{ color: getGpuColor(latestTemperature, 'temperature') }}>
+                  {latestTemperature.toFixed(1)}°C
                 </span>
               </div>
             )}
@@ -207,7 +188,7 @@ const GpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = fal
               <div className="widget-info-item">
                 <span className="widget-info-label">Power:</span>
                 <span className="widget-info-value">
-                  {latestData.power.toFixed(0)}W
+                  {latestPower.toFixed(0)}W
                 </span>
               </div>
             )}
@@ -240,7 +221,7 @@ const GpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = fal
                     <Line 
                       type="monotone" 
                       dataKey="usage" 
-                      stroke={getGpuColor(latestData.usage, 'usage')}
+                      stroke={getGpuColor(latestUsage, 'usage')}
                       strokeWidth={2}
                       dot={false}
                       name="usage"
@@ -249,7 +230,7 @@ const GpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = fal
                       <Line 
                         type="monotone" 
                         dataKey="memory" 
-                        stroke={getGpuColor(latestData.memory, 'memory')}
+                        stroke={getGpuColor(memoryUsagePercent, 'memory')}
                         strokeWidth={2}
                         dot={false}
                         name="memory"
@@ -259,7 +240,7 @@ const GpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = fal
                       <Line 
                         type="monotone" 
                         dataKey="temperature" 
-                        stroke={getGpuColor(latestData.temperature, 'temperature')}
+                        stroke={getGpuColor(latestTemperature, 'temperature')}
                         strokeWidth={2}
                         dot={false}
                         name="temperature"
@@ -289,13 +270,13 @@ const GpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = fal
                     />
                     <Bar 
                       dataKey="usage" 
-                      fill={getGpuColor(latestData.usage, 'usage')}
+                      fill={getGpuColor(latestUsage, 'usage')}
                       name="usage"
                     />
                     {showGpuMemory && (
                       <Bar 
                         dataKey="memory" 
-                        fill={getGpuColor(latestData.memory, 'memory')}
+                        fill={getGpuColor(memoryUsagePercent, 'memory')}
                         name="memory"
                       />
                     )}
@@ -304,12 +285,12 @@ const GpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = fal
                   <AreaChart data={chartData} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
                     <defs>
                       <linearGradient id="gpuUsageGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor={getGpuColor(latestData.usage, 'usage')} stopOpacity={0.8}/>
-                        <stop offset="95%" stopColor={getGpuColor(latestData.usage, 'usage')} stopOpacity={0.1}/>
+                        <stop offset="5%" stopColor={getGpuColor(latestUsage, 'usage')} stopOpacity={0.8}/>
+                        <stop offset="95%" stopColor={getGpuColor(latestUsage, 'usage')} stopOpacity={0.1}/>
                       </linearGradient>
                       <linearGradient id="gpuMemoryGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor={getGpuColor(latestData.memory, 'memory')} stopOpacity={0.8}/>
-                        <stop offset="95%" stopColor={getGpuColor(latestData.memory, 'memory')} stopOpacity={0.1}/>
+                        <stop offset="5%" stopColor={getGpuColor(memoryUsagePercent, 'memory')} stopOpacity={0.8}/>
+                        <stop offset="95%" stopColor={getGpuColor(memoryUsagePercent, 'memory')} stopOpacity={0.1}/>
                       </linearGradient>
                     </defs>
                     <XAxis dataKey="time" hide />
@@ -334,7 +315,7 @@ const GpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = fal
                     <Area 
                       type="monotone" 
                       dataKey="usage" 
-                      stroke={getGpuColor(latestData.usage, 'usage')}
+                      stroke={getGpuColor(latestUsage, 'usage')}
                       strokeWidth={2}
                       fill="url(#gpuUsageGradient)"
                       name="usage"
@@ -343,7 +324,7 @@ const GpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = fal
                       <Area 
                         type="monotone" 
                         dataKey="memory" 
-                        stroke={getGpuColor(latestData.memory, 'memory')}
+                        stroke={getGpuColor(memoryUsagePercent, 'memory')}
                         strokeWidth={2}
                         fill="url(#gpuMemoryGradient)"
                         name="memory"
