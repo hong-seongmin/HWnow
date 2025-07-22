@@ -8,12 +8,27 @@ import ToastContainer from './components/common/ToastContainer'
 import Onboarding from './components/common/Onboarding'
 import SupportLinks from './components/common/SupportLinks'
 import { ToastProvider, useToast } from './contexts/ToastContext'
+import { useAppShortcuts } from './hooks/useAppShortcuts'
 import { initWebSocket } from './services/websocketService'
 import './App.css'
 
 function AppContent() {
   const { toasts, removeToast, showInfo } = useToast()
   const [showOnboarding, setShowOnboarding] = useState(false)
+
+  // 전역 단축키 활성화
+  useAppShortcuts({
+    onOpenContextMenu: (position) => {
+      // Dashboard의 ContextMenu 열기 이벤트 발생
+      window.dispatchEvent(new CustomEvent('openContextMenu', { 
+        detail: { position } 
+      }));
+    },
+    onOpenWidgetSettings: (widgetId) => {
+      // 위젯 설정 모달 열기 (추후 구현)
+      showInfo(`Opening settings for widget: ${widgetId}`);
+    },
+  })
 
   useEffect(() => {
     initWebSocket()

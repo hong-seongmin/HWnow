@@ -61,6 +61,9 @@ const Dashboard = () => {
   const activePage = pages[activePageIndex];
   const layouts = activePage?.layouts || [];
   const widgets = activePage?.widgets || [];
+  
+  console.log('Dashboard - activePage:', activePage?.name, 'widgets count:', widgets.length);
+  console.log('Dashboard - widgets:', widgets.map(w => ({ i: w.i, type: w.type })));
 
   // Context menu state
   const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
@@ -68,6 +71,50 @@ const Dashboard = () => {
 
   // Widget zoom state
   const { expandedWidget, expandWidget, collapseWidget } = useWidgetZoom();
+  
+  // Widget focus state - Dashboard에서 직접 관리
+  const [focusedWidgetId, setFocusedWidgetId] = useState<string | null>(null);
+  const [selectedWidgetIds, setSelectedWidgetIds] = useState<Set<string>>(new Set());
+  
+  console.log('Dashboard render - selection count:', selectedWidgetIds.size, 'selected IDs:', Array.from(selectedWidgetIds));
+  
+  // 위젯 포커스 함수들
+  const focusWidget = useCallback((widgetId: string | null) => {
+    setFocusedWidgetId(widgetId);
+  }, []);
+  
+  const toggleWidgetSelection = useCallback((widgetId: string, multiSelect = false) => {
+    setSelectedWidgetIds(prev => {
+      const newSelected = new Set(prev);
+      
+      if (!multiSelect) {
+        newSelected.clear();
+      }
+      
+      if (newSelected.has(widgetId)) {
+        newSelected.delete(widgetId);
+      } else {
+        newSelected.add(widgetId);
+      }
+      
+      console.log('Selection updated:', Array.from(newSelected));
+      return newSelected;
+    });
+  }, []);
+  
+  const selectAllWidgets = useCallback(() => {
+    const allWidgetIds = new Set(widgets.map(w => w.i));
+    console.log('selectAllWidgets - setting:', Array.from(allWidgetIds));
+    setSelectedWidgetIds(allWidgetIds);
+  }, [widgets]);
+  
+  const isWidgetFocused = useCallback((widgetId: string) => {
+    return focusedWidgetId === widgetId;
+  }, [focusedWidgetId]);
+  
+  const isWidgetSelected = useCallback((widgetId: string) => {
+    return selectedWidgetIds.has(widgetId);
+  }, [selectedWidgetIds]);
 
   // Dynamic bottom padding state
   const [bottomPadding, setBottomPadding] = useState(500); // 기본 500px
@@ -160,6 +207,42 @@ const Dashboard = () => {
     setIsContextMenuOpen(false);
   };
 
+  // 전역 단축키에서 오는 이벤트들 리스닝
+  useEffect(() => {
+    const handleOpenContextMenu = (event: CustomEvent) => {
+      const { position } = event.detail;
+      setContextMenuPosition(position);
+      setIsContextMenuOpen(true);
+    };
+
+    const handleSelectAllWidgets = () => {
+      console.log('Received selectAllWidgets event');
+      selectAllWidgets();
+    };
+
+    const handleDeleteSelectedWidgets = () => {
+      console.log('Received deleteSelectedWidgets event');
+      if (selectedWidgetIds.size > 0) {
+        Array.from(selectedWidgetIds).forEach(widgetId => {
+          handleRemoveWidget(widgetId);
+        });
+        setSelectedWidgetIds(new Set());
+      } else if (focusedWidgetId) {
+        handleRemoveWidget(focusedWidgetId);
+      }
+    };
+
+    window.addEventListener('openContextMenu', handleOpenContextMenu as EventListener);
+    window.addEventListener('selectAllWidgets', handleSelectAllWidgets as EventListener);
+    window.addEventListener('deleteSelectedWidgets', handleDeleteSelectedWidgets as EventListener);
+    
+    return () => {
+      window.removeEventListener('openContextMenu', handleOpenContextMenu as EventListener);
+      window.removeEventListener('selectAllWidgets', handleSelectAllWidgets as EventListener);
+      window.removeEventListener('deleteSelectedWidgets', handleDeleteSelectedWidgets as EventListener);
+    };
+  }, [selectAllWidgets, selectedWidgetIds, focusedWidgetId]);
+
   // 레이아웃에 크기 제한 추가
   const layoutsWithConstraints = layouts.map(layout => ({
     ...layout,
@@ -217,8 +300,35 @@ const Dashboard = () => {
       >
         {widgets.map((widget) => {
           const WidgetComponent = widgetMap[widget.type];
+          const isFocused = isWidgetFocused(widget.i);
+          const isSelected = isWidgetSelected(widget.i);
+          
+          console.log(`Rendering widget ${widget.i}:`, { isFocused, isSelected });
+          
           return (
-            <div key={widget.i} className="widget-wrapper">
+            <div 
+              key={widget.i} 
+              className={[
+                'widget-wrapper',
+                isFocused ? 'widget-focused' : '',
+                isSelected ? 'widget-selected' : ''
+              ].filter(Boolean).join(' ')}
+              data-widget-id={widget.i}
+              tabIndex={0}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (e.ctrlKey || e.metaKey) {
+                  toggleWidgetSelection(widget.i, true);
+                } else {
+                  toggleWidgetSelection(widget.i, false);
+                }
+                focusWidget(widget.i);
+              }}
+              onDoubleClick={() => expandWidget(widget.i)}
+              role="button"
+              aria-label={`Widget ${widget.i}`}
+              aria-selected={isSelected}
+            >
               {WidgetComponent ? (
                 <WidgetComponent 
                   widgetId={widget.i} 
