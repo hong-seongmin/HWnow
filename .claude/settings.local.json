@@ -32,7 +32,12 @@
       "Bash(./start-simple.bat:*)",
       "Bash(npm:*)",
       "Bash(./build-standalone.bat)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(tsc --noEmit)",
+      "Bash(npx tsc:*)",
+      "Bash(wmic path win32_VideoController get Name,AdapterRAM /format:csv:*)",
+      "Bash(nvidia-smi:*)",
+      "Bash(start.bat 3)"
     ],
     "deny": []
   }
