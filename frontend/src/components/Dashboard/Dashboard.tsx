@@ -2,6 +2,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { Responsive, WidthProvider } from 'react-grid-layout';
 import type { Layout } from 'react-grid-layout';
 import { useDashboardStore } from '../../stores/dashboardStore';
+import { useHistoryStore } from '../../stores/historyStore';
+import { RemoveWidgetCommand, UpdateLayoutCommand } from '../../stores/commands';
 import CpuWidget from '../widgets/CpuWidget';
 import MemoryWidget from '../widgets/MemoryWidget';
 import DiskWidget from '../widgets/DiskWidget';
@@ -56,6 +58,7 @@ const widgetMap: { [key in WidgetType]: React.ComponentType<{ widgetId: string; 
 
 const Dashboard = () => {
   const { pages, activePageIndex, isInitialized, actions } = useDashboardStore();
+  const { actions: historyActions } = useHistoryStore();
   const { showSuccess, showError } = useToast();
   
   const activePage = pages[activePageIndex];
@@ -181,16 +184,36 @@ const Dashboard = () => {
     };
   }, [bottomPadding]);
 
-  const handleLayoutChange = (newLayout: Layout[]) => {
-    actions.updateLayout(newLayout);
-    // saveState는 updateLayout 내부에서 호출됩니다.
+  const handleLayoutChange = async (newLayout: Layout[]) => {
+    const oldLayout = layouts;
+    
+    // 즉시 UI 업데이트 및 서버 저장 (기존 방식 유지)
+    try {
+      await actions.updateLayout(newLayout);
+    } catch (error) {
+      console.error('Failed to update layout:', error);
+      return; // 서버 저장 실패 시 히스토리 추가 중단
+    }
+    
+    // 히스토리에 Command 추가 (Undo/Redo용)
+    const hasChanges = JSON.stringify(oldLayout) !== JSON.stringify(newLayout);
+    if (hasChanges) {
+      const command = new UpdateLayoutCommand(oldLayout, newLayout);
+      // 히스토리는 비블로킹으로 처리
+      historyActions.executeCommand(command).catch(error => {
+        console.error('Failed to add layout change to history:', error);
+      });
+    }
   };
 
-  const handleRemoveWidget = (widgetId: string) => {
+  const handleRemoveWidget = async (widgetId: string) => {
     const widget = widgets.find((w) => w.i === widgetId);
     const widgetName = widget ? widget.type.replace(/_/g, ' ').toUpperCase() : 'Widget';
+    
+    const command = new RemoveWidgetCommand(widgetId);
+    
     try {
-      actions.removeWidget(widgetId);
+      await historyActions.executeCommand(command);
       showSuccess(`${widgetName} widget removed`);
     } catch (error) {
       showError(`Failed to remove ${widgetName} widget`);
@@ -232,16 +255,27 @@ const Dashboard = () => {
       }
     };
 
+    const handleShowToast = (event: CustomEvent) => {
+      const { message, type } = event.detail;
+      if (type === 'info') {
+        showSuccess(message);
+      } else if (type === 'error') {
+        showError(message);
+      }
+    };
+
     window.addEventListener('openContextMenu', handleOpenContextMenu as EventListener);
     window.addEventListener('selectAllWidgets', handleSelectAllWidgets as EventListener);
     window.addEventListener('deleteSelectedWidgets', handleDeleteSelectedWidgets as EventListener);
+    window.addEventListener('showToast', handleShowToast as EventListener);
     
     return () => {
       window.removeEventListener('openContextMenu', handleOpenContextMenu as EventListener);
       window.removeEventListener('selectAllWidgets', handleSelectAllWidgets as EventListener);
       window.removeEventListener('deleteSelectedWidgets', handleDeleteSelectedWidgets as EventListener);
+      window.removeEventListener('showToast', handleShowToast as EventListener);
     };
-  }, [selectAllWidgets, selectedWidgetIds, focusedWidgetId]);
+  }, [selectAllWidgets, selectedWidgetIds, focusedWidgetId, showSuccess, showError]);
 
   // 레이아웃에 크기 제한 추가
   const layoutsWithConstraints = layouts.map(layout => ({

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useDashboardStore } from '../../stores/dashboardStore';
+import { useHistoryStore } from '../../stores/historyStore';
+import { AddWidgetCommand } from '../../stores/commands';
 import { useToast } from '../../contexts/ToastContext';
 import type { WidgetType } from '../../stores/types';
 import './ContextMenu.css';
@@ -197,7 +198,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ isOpen, position, onCl
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<number | null>(null);
-  const { addWidget } = useDashboardStore((state) => state.actions);
+  const { actions: historyActions } = useHistoryStore();
   const { showSuccess, showError } = useToast();
 
   // Group widgets by category
@@ -245,9 +246,11 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ isOpen, position, onCl
     };
   }, [isOpen, onClose]);
 
-  const handleAddWidget = (type: WidgetType, label: string) => {
+  const handleAddWidget = async (type: WidgetType, label: string) => {
+    const command = new AddWidgetCommand(type);
+    
     try {
-      addWidget(type);
+      await historyActions.executeCommand(command);
       showSuccess(`${label} added to dashboard`);
       onClose();
     } catch (error) {
