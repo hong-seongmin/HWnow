@@ -295,7 +295,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       }
     },
 
-    updateLayout: (layouts) => {
+    updateLayout: async (layouts) => {
       set((state) => {
         const activePage = state.pages[state.activePageIndex];
         const updatedPage = { ...activePage, layouts };
@@ -303,7 +303,15 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         newPages[state.activePageIndex] = updatedPage;
         return { pages: newPages };
       });
-      get().actions.saveState();
+      
+      // 레이아웃 변경은 즉시 서버에 반영
+      try {
+        await get().actions.saveStateImmediate();
+      } catch (error) {
+        console.error('Failed to save layout change immediately:', error);
+        // 실패 시 디바운스된 저장을 백업으로 사용
+        get().actions.saveState();
+      }
     },
     
     updateWidgetConfig: (widgetId, config) => {
@@ -322,6 +330,46 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         return { pages: newPages };
       });
       get().actions.saveState();
+    },
+
+    saveStateImmediate: async () => {
+      const userId = getUserId();
+      const { pages, activePageIndex } = get();
+      const activePage = pages[activePageIndex];
+
+      const widgetStates: WidgetState[] = activePage.widgets.map(widget => {
+        const layout = activePage.layouts.find(l => l.i === widget.i);
+        return {
+          userId,
+          pageId: activePage.id,
+          widgetId: widget.i,
+          widgetType: widget.type,
+          config: JSON.stringify(widget.config || {}),
+          layout: JSON.stringify({
+            x: layout?.x ?? 0,
+            y: layout?.y ?? 0,
+            w: layout?.w ?? 6,
+            h: layout?.h ?? 2,
+          }),
+        };
+      });
+      
+      try {
+        await saveWidgets(widgetStates);
+      } catch (err) {
+        console.error("Failed to save state to server:", err);
+        // 서버 저장 실패시 localStorage에 폴백
+        try {
+          localStorage.setItem('hwnow_dashboard_backup', JSON.stringify({
+            pages: get().pages,
+            activePageIndex: get().activePageIndex
+          }));
+          console.log("State saved to localStorage as fallback");
+        } catch (localErr) {
+          console.error("Failed to save to localStorage:", localErr);
+        }
+        throw err;
+      }
     },
 
     saveState: debounce(() => {

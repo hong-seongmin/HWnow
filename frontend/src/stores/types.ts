@@ -109,10 +109,11 @@ export interface DashboardState {
     
     addWidget: (type: WidgetType) => void;
     removeWidget: (widgetId: string) => void;
-    updateLayout: (layouts: Layout[]) => void;
+    updateLayout: (layouts: Layout[]) => Promise<void>;
     updateWidgetConfig: (widgetId: string, config: Partial<WidgetConfig>) => void;
     
     saveState: () => void;
+    saveStateImmediate: () => Promise<void>;
     resetState: () => void;
   };
 } 
