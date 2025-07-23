@@ -37,7 +37,8 @@
       "Bash(npx tsc:*)",
       "Bash(wmic path win32_VideoController get Name,AdapterRAM /format:csv:*)",
       "Bash(nvidia-smi:*)",
-      "Bash(start.bat 3)"
+      "Bash(start.bat 3)",
+      "Bash(.start.bat 1)"
     ],
     "deny": []
   }
