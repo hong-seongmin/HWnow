@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { useGlobalKeyboard, createNumberShortcuts } from './useGlobalKeyboard';
 import { useDashboardStore } from '../stores/dashboardStore';
+import { useHistoryStore } from '../stores/historyStore';
 
 interface UseAppShortcutsOptions {
   onOpenContextMenu?: (position: { x: number; y: number }) => void;
@@ -17,6 +18,17 @@ export const useAppShortcuts = (options: UseAppShortcutsOptions = {}) => {
       setActivePageIndex,
     } 
   } = useDashboardStore();
+  
+  const { 
+    actions: { 
+      undo, 
+      redo, 
+      canUndo, 
+      canRedo,
+      getUndoDescription,
+      getRedoDescription
+    } 
+  } = useHistoryStore();
 
   // 페이지 이동 (Ctrl+1-9)
   const handlePageNavigation = useCallback((pageNum: number) => {
@@ -75,8 +87,59 @@ export const useAppShortcuts = (options: UseAppShortcutsOptions = {}) => {
     console.log('Arrow navigation:', direction);
   }, []);
 
+  // Undo 기능
+  const handleUndo = useCallback(() => {
+    if (canUndo()) {
+      const description = getUndoDescription();
+      const success = undo();
+      if (success) {
+        console.log(`Undo: ${description || 'Unknown action'}`);
+        // Toast notification을 위한 이벤트 발생
+        window.dispatchEvent(new CustomEvent('showToast', {
+          detail: { 
+            message: `Undo: ${description || 'Unknown action'}`, 
+            type: 'info' 
+          }
+        }));
+      }
+    }
+  }, [canUndo, getUndoDescription, undo]);
+
+  // Redo 기능
+  const handleRedo = useCallback(async () => {
+    if (canRedo()) {
+      const description = getRedoDescription();
+      const success = await redo();
+      if (success) {
+        console.log(`Redo: ${description || 'Unknown action'}`);
+        // Toast notification을 위한 이벤트 발생
+        window.dispatchEvent(new CustomEvent('showToast', {
+          detail: { 
+            message: `Redo: ${description || 'Unknown action'}`, 
+            type: 'info' 
+          }
+        }));
+      }
+    }
+  }, [canRedo, getRedoDescription, redo]);
+
   // 단축키 정의
   const shortcuts = [
+    // 실행 취소/다시 실행
+    {
+      key: 'z',
+      ctrl: true,
+      action: handleUndo,
+      description: 'Undo (Ctrl+Z)',
+    },
+    {
+      key: 'z',
+      ctrl: true,
+      shift: true,
+      action: handleRedo,
+      description: 'Redo (Ctrl+Shift+Z)',
+    },
+    
     // 위젯 메뉴 열기
     {
       key: 'w',
