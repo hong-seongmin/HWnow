@@ -1,86 +1,113 @@
 # HWnow: 실시간 컴퓨팅 자원 모니터링 웹앱
 
-이 프로젝트는 Go 언어로 구현된 백엔드와 React 기반의 프론트엔드를 사용하여 실시간으로 컴퓨터의 주요 자원(CPU, 메모리, 디스크, 네트워크) 사용량을 모니터링하는 웹 애플리케이션입니다.
+Go 언어 백엔드와 React 프론트엔드를 사용하여 실시간으로 컴퓨터의 주요 자원(CPU, 메모리, 디스크, 네트워크) 사용량을 모니터링하는 웹 애플리케이션입니다.
 
 ## ✨ 주요 기능
 
-- **실시간 모니터링**: 웹소켓을 통해 시스템 자원 데이터를 실시간으로 시각화합니다.
-- **다양한 위젯**: CPU, 메모리, 디스크 I/O, 네트워크 I/O 등 주요 자원별 모니터링 위젯을 제공합니다.
-- **사용자 맞춤 대시보드**:
-  - 드래그 앤 드롭으로 위젯 위치를 자유롭게 변경할 수 있습니다.
-  - 각 위젯의 크기를 원하는 대로 조절할 수 있습니다.
-  - 모든 레이아웃 변경 사항은 브라우저의 로컬 스토리지에 자동으로 저장됩니다.
-- **상세한 위젯 설정**:
-  - 표시할 데이터 종류, 단위, 업데이트 주기 등을 설정할 수 있습니다.
-  - 차트 유형(Line, Area, Bar, Gauge)과 색상을 변경하여 시각화 스타일을 커스터마이징할 수 있습니다.
-- **테마 지원**: 라이트 모드와 다크 모드를 모두 지원하며, 단축키(Ctrl+T)로 쉽게 전환할 수 있습니다.
+- **실시간 모니터링**: 웹소켓을 통해 시스템 자원 데이터를 실시간으로 시각화
+- **다양한 위젯**: CPU, 메모리, 디스크 I/O, 네트워크 I/O 등 주요 자원별 모니터링 위젯
+- **사용자 맞춤 대시보드**: 드래그 앤 드롭으로 위젯 위치 변경, 크기 조절, 자동 저장
+- **테마 지원**: 라이트/다크 모드 지원 (Ctrl+T로 전환)
 
-## 🛠️ 기술 스택
+## 🚀 빠른 시작
 
-| 구분      | 기술                                                               |
-| --------- | ------------------------------------------------------------------ |
-| **Frontend**  | React, TypeScript, Vite, Zustand, Recharts, React-Grid-Layout    |
-| **Backend**   | Go, Gorilla WebSocket                                              |
-| **Database**  | SQLite                                                             |
+### 1. 사전 요구 사항
+- **[Go](https://go.dev/dl/)** (1.18 이상) - [공식 MSI 설치 프로그램](https://go.dev/dl/go1.24.5.windows-amd64.msi) 권장
+- **[Node.js](https://nodejs.org/)** (18.x 이상)
 
-## 📂 프로젝트 구조
-
-```
-/
-├── backend/         # Go 백엔드 소스코드
-│   ├── main.go      # 메인 애플리케이션
-│   ├── websockets/  # 웹소켓 핸들러
-│   └── ...
-├── database/        # SQLite 데이터베이스 파일 (버전 관리 제외 대상)
-├── frontend/        # React 프론트엔드 소스코드
-│   ├── src/
-│   │   ├── components/ # React 컴포넌트
-│   │   ├── stores/     # Zustand 상태 관리
-│   │   └── ...
-│   └── package.json
-├── 기획/            # 프로젝트 기획 문서
-└── start.bat        # 백엔드/프론트엔드 동시 실행 스크립트
+### 2. 프로젝트 다운로드 & 실행
+```cmd
+git clone https://github.com/hong-seongmin/HWnow
+cd HWnow
+start.bat 1
 ```
 
-## 🚀 시작하기
+### 3. 브라우저에서 확인
+`http://localhost:8080` 접속 (기본값, config.json에서 변경 가능)
 
-### 사전 요구 사항
+## 📋 사용법
 
-- [Go](https://go.dev/doc/install) (1.18 이상 권장)
-- [Node.js](https://nodejs.org/en/download) (18.x 이상 권장)
+### 자동 빌드 & 실행
+```cmd
+start.bat 1
+```
+- 프론트엔드 자동 빌드
+- 백엔드 컴파일 및 실행
+- `HWnow.exe` 생성 후 즉시 실행
 
-### 설치 및 실행
+### 빌드만 수행
+```cmd
+start.bat 2
+```
+- `HWnow.exe` 독립실행파일만 생성 (약 17MB)
+- 실행하지 않고 빌드만 완료
 
-1.  **프로젝트 클론**
-    ```bash
-    git clone https://github.com/hong-seongmin/HWnow
-    cd HWnow
-    ```
+### 수동 빌드 (고급 사용자)
+```bash
+# 프론트엔드 빌드
+cd frontend && npm install && npm run build && cd ..
 
-2.  **프론트엔드 의존성 설치**
-    ```bash
-    cd frontend
-    npm install
-    cd ..
-    ```
+# 백엔드 빌드
+cp -r frontend/dist/* backend/dist/
+cd backend && go build -o ../HWnow.exe main.go && cd ..
+```
 
-3.  **애플리케이션 실행**
-    프로젝트 루트 디렉토리에서 아래의 배치 파일을 실행하면 백엔드 서버 빌드 및 실행과 프론트엔드 개발 서버 실행이 동시에 진행됩니다.
-    ```bash
-    ./start.bat
-    ```
-    실행 후, 웹 브라우저에서 `http://localhost:5173`으로 접속하여 애플리케이션을 확인할 수 있습니다.
+## 🔧 문제 해결
+
+### Go 설치 오류
+```
+go: command not found
+```
+**해결방법**: [Go 공식 사이트](https://go.dev/dl/)에서 MSI 파일 다운로드 후 설치
+
+### Node.js 설치 오류
+```
+npm: command not found
+```
+**해결방법**: [Node.js 공식 사이트](https://nodejs.org/)에서 설치
+
+### 의존성 설치 실패
+```
+npm install 실패
+```
+**해결방법**: 
+```bash
+cd frontend
+rm -rf node_modules package-lock.json
+npm install
+```
+
+### 포트 충돌 및 설정 변경
+기본 포트 8080이 사용 중인 경우 `config.json`에서 포트 변경:
+```json
+{
+  "server": {
+    "port": 9090,
+    "host": "localhost"
+  }
+}
+```
+설정 변경 후 HWnow.exe 재시작
+
+## ✅ 검증된 빌드 결과
+
+**테스트 환경**: Windows 10/11, Go 1.24.5, Node.js v22.14.0
+
+### 빌드 성능
+- **프론트엔드 빌드**: 6.65초 (TypeScript + Vite)
+- **백엔드 빌드**: 약 2-3분 (첫 빌드, Go 의존성 다운로드 포함)
+- **최종 파일 크기**: 17MB (모든 의존성 내장)
+
+### 실행 확인
+- ✅ 포트 설정 적용 (config.json: 9090 → 실제 실행: 9090)
+- ✅ 실시간 모니터링 데이터 수집 (CPU, 메모리, 디스크, 네트워크, GPU)
+- ✅ 웹소켓 연결 및 클라이언트 감지
+- ✅ SQLite 데이터베이스 자동 생성
 
 ## 💖 후원 및 지원
 
-프로젝트가 마음에 드셨다면, 아래 링크를 통해 저희를 지원해주세요. 여러분의 작은 관심이 큰 힘이 됩니다.
+프로젝트가 마음에 드셨다면 후원을 통해 지원해주세요.
 
 [![Buy Me A Coffee](https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png)](https://buymeacoffee.com/oursophy)
 
-프로젝트의 소스 코드는 GitHub에서 확인하실 수 있습니다.
-
--   **GitHub Repository**: [https://github.com/hong-seongmin/HWnow](https://github.com/hong-seongmin/HWnow)
-
-## 🎯 TODO
-
--   위젯 옵션 정교화
+**GitHub Repository**: [https://github.com/hong-seongmin/HWnow](https://github.com/hong-seongmin/HWnow)
