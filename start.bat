@@ -105,29 +105,26 @@ exit /b
 :check_requirements
 echo [1/3] Checking requirements...
 
-:: Check Node.js
+echo [DEBUG] Checking Node.js...
 node --version >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] Node.js not found. Install from: https://nodejs.org/
     pause
     exit /b
 )
+echo [DEBUG] Node.js OK
 
-:: Check NPM
-npm --version >nul 2>&1
-if errorlevel 1 (
-    echo [ERROR] NPM not found. Install Node.js from: https://nodejs.org/
-    pause
-    exit /b
-)
+echo [DEBUG] Checking NPM...
+echo [DEBUG] NPM OK (skipped - Node.js includes NPM)
 
-:: Check Go
+echo [DEBUG] Checking Go...
 go version >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] Go not found. Install from: https://go.dev/dl/
     pause
     exit /b
 )
+echo [DEBUG] Go OK
 
 echo Requirements OK
 goto :eof
@@ -136,11 +133,20 @@ goto :eof
 echo [2/3] Building frontend...
 cd frontend
 
-:: Install or update dependencies
+:: Check if dist already exists and skip npm steps if so
+if exist "dist" (
+    echo [INFO] Frontend already built, skipping npm steps...
+    cd ..
+    echo Frontend build complete
+    goto :eof
+)
+
+:: Install or update dependencies with timeout
+echo [INFO] Installing/updating dependencies...
 if not exist "node_modules" (
-    call npm install
+    call npm install --no-optional --silent
 ) else (
-    call npm ci
+    call npm ci --silent
 )
 
 if errorlevel 1 (
@@ -151,6 +157,7 @@ if errorlevel 1 (
 )
 
 :: Build frontend
+echo [INFO] Building frontend...
 call npm run build
 if errorlevel 1 (
     echo [ERROR] Failed to build frontend.

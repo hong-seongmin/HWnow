@@ -36,7 +36,10 @@ Thumbs.db
 *.ntvs*
 *.njsproj
 *.sln
-*.sw? 
+*.sw?
+
+# Claude Code
+.claude/ 
 
 # Markdown files
 *.md
