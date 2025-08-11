@@ -16,6 +16,7 @@ import NetworkStatusWidget from '../widgets/NetworkStatusWidget';
 import ProcessMonitorWidget from '../widgets/ProcessMonitorWidget';
 import SystemLogWidget from '../widgets/SystemLogWidget';
 import GpuWidget from '../widgets/GpuWidget';
+import GpuProcessWidget from '../widgets/GpuProcessWidget';
 import { ContextMenu } from '../common/ContextMenu';
 import { WidgetFullscreen } from '../common/WidgetModal';
 import { useWidgetZoom } from '../../hooks/useWidgetZoom';
@@ -47,6 +48,7 @@ const widgetMap: { [key in WidgetType]: React.ComponentType<{ widgetId: string; 
   net_sent: NetworkWidget,
   net_recv: NetworkWidget, // Both net metrics use the same component
   gpu: GpuWidget,
+  gpu_process: GpuProcessWidget,
   system_uptime: SystemUptimeWidget,
   process_monitor: ProcessMonitorWidget,
   battery: BatteryWidget,
@@ -65,8 +67,6 @@ const Dashboard = () => {
   const layouts = activePage?.layouts || [];
   const widgets = activePage?.widgets || [];
   
-  console.log('Dashboard - activePage:', activePage?.name, 'widgets count:', widgets.length);
-  console.log('Dashboard - widgets:', widgets.map(w => ({ i: w.i, type: w.type })));
 
   // Context menu state
   const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
@@ -79,7 +79,6 @@ const Dashboard = () => {
   const [focusedWidgetId, setFocusedWidgetId] = useState<string | null>(null);
   const [selectedWidgetIds, setSelectedWidgetIds] = useState<Set<string>>(new Set());
   
-  console.log('Dashboard render - selection count:', selectedWidgetIds.size, 'selected IDs:', Array.from(selectedWidgetIds));
   
   // 위젯 포커스 함수들
   const focusWidget = useCallback((widgetId: string | null) => {
@@ -100,14 +99,12 @@ const Dashboard = () => {
         newSelected.add(widgetId);
       }
       
-      console.log('Selection updated:', Array.from(newSelected));
       return newSelected;
     });
   }, []);
   
   const selectAllWidgets = useCallback(() => {
     const allWidgetIds = new Set(widgets.map(w => w.i));
-    console.log('selectAllWidgets - setting:', Array.from(allWidgetIds));
     setSelectedWidgetIds(allWidgetIds);
   }, [widgets]);
   
@@ -239,12 +236,10 @@ const Dashboard = () => {
     };
 
     const handleSelectAllWidgets = () => {
-      console.log('Received selectAllWidgets event');
       selectAllWidgets();
     };
 
     const handleDeleteSelectedWidgets = () => {
-      console.log('Received deleteSelectedWidgets event');
       if (selectedWidgetIds.size > 0) {
         Array.from(selectedWidgetIds).forEach(widgetId => {
           handleRemoveWidget(widgetId);
@@ -337,7 +332,6 @@ const Dashboard = () => {
           const isFocused = isWidgetFocused(widget.i);
           const isSelected = isWidgetSelected(widget.i);
           
-          console.log(`Rendering widget ${widget.i}:`, { isFocused, isSelected });
           
           return (
             <div 

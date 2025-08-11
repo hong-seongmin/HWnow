@@ -66,25 +66,21 @@ export const useAppShortcuts = (options: UseAppShortcutsOptions = {}) => {
   // 위젯 설정 열기 (S)
   const handleOpenWidgetSettings = useCallback(() => {
     // TODO: 포커스된 위젯의 설정 열기 구현
-    console.log('Widget settings shortcut triggered');
   }, []);
 
   // 위젯 선택/활성화 (Enter)
   const handleSelectWidget = useCallback(() => {
     // TODO: 포커스된 위젯 선택 구현
-    console.log('Widget select shortcut triggered');
   }, []);
 
   // 위젯 전체화면 (Space)
   const handleToggleFullscreen = useCallback(() => {
     // TODO: 포커스된 위젯 전체화면 구현
-    console.log('Widget fullscreen shortcut triggered');
   }, []);
 
   // 방향키 네비게이션
-  const handleArrowNavigation = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
+  const handleArrowNavigation = useCallback((_direction: 'up' | 'down' | 'left' | 'right') => {
     // TODO: 방향키 네비게이션 구현
-    console.log('Arrow navigation:', direction);
   }, []);
 
   // Undo 기능
@@ -93,7 +89,6 @@ export const useAppShortcuts = (options: UseAppShortcutsOptions = {}) => {
       const description = getUndoDescription();
       const success = undo();
       if (success) {
-        console.log(`Undo: ${description || 'Unknown action'}`);
         // Toast notification을 위한 이벤트 발생
         window.dispatchEvent(new CustomEvent('showToast', {
           detail: { 
@@ -111,7 +106,6 @@ export const useAppShortcuts = (options: UseAppShortcutsOptions = {}) => {
       const description = getRedoDescription();
       const success = await redo();
       if (success) {
-        console.log(`Redo: ${description || 'Unknown action'}`);
         // Toast notification을 위한 이벤트 발생
         window.dispatchEvent(new CustomEvent('showToast', {
           detail: { 
@@ -215,7 +209,6 @@ export const useAppShortcuts = (options: UseAppShortcutsOptions = {}) => {
       key: 'a',
       ctrl: true,
       action: () => {
-        console.log('Ctrl+A shortcut triggered!');
         window.dispatchEvent(new CustomEvent('selectAllWidgets'));
       },
       description: 'Select all widgets (Ctrl+A)',

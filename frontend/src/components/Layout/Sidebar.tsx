@@ -32,6 +32,7 @@ const Sidebar = () => {
           <h4>System Info</h4>
           <button className="add-widget-button" onClick={() => addWidget('system_uptime')}>System Uptime</button>
           <button className="add-widget-button" onClick={() => addWidget('process_monitor')}>Top Processes</button>
+          <button className="add-widget-button" onClick={() => addWidget('gpu_process')}>GPU Processes</button>
           <button className="add-widget-button" onClick={() => addWidget('battery')}>Battery</button>
           <button className="add-widget-button" onClick={() => addWidget('system_log')}>System Logs</button>
         </div>

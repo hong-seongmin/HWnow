@@ -18,12 +18,9 @@ export const useWidgetFocus = () => {
   const currentPage = pages[activePageIndex];
   const currentWidgets: Widget[] = currentPage ? currentPage.widgets : [];
   
-  console.log('useWidgetFocus - pages:', pages.length, 'activePageIndex:', activePageIndex);
-  console.log('useWidgetFocus - currentPage:', currentPage?.name, 'widgets:', currentWidgets.length);
   
   // 위젯 목록이 변경될 때 상태 재설정
   useEffect(() => {
-    console.log('Widget list changed, clearing focus state');
     if (currentWidgets.length === 0) {
       setFocusState({
         focusedWidgetId: null,
@@ -68,31 +65,18 @@ export const useWidgetFocus = () => {
   // 모든 위젯 선택
   const selectAllWidgets = useCallback(() => {
     const allWidgetIds = new Set(currentWidgets.map((w: Widget) => w.i));
-    console.log('selectAllWidgets called:', {
-      currentWidgetsCount: currentWidgets.length,
-      allWidgetIds: Array.from(allWidgetIds)
-    });
     
     // 상태 업데이트를 즉시 실행
     setFocusState(prev => {
-      console.log('Previous state:', {
-        focusedWidgetId: prev.focusedWidgetId,
-        selectedWidgetIds: Array.from(prev.selectedWidgetIds)
-      });
       const newState = {
         focusedWidgetId: prev.focusedWidgetId,
         selectedWidgetIds: new Set(allWidgetIds),
       };
-      console.log('New state will be:', {
-        focusedWidgetId: newState.focusedWidgetId,
-        selectedWidgetIds: Array.from(newState.selectedWidgetIds)
-      });
       return newState;
     });
     
     // 강제 리렌더링을 위한 타임아웃
     setTimeout(() => {
-      console.log('Force rerender check after selectAll');
     }, 100);
   }, [currentWidgets]);
 
@@ -157,11 +141,6 @@ export const useWidgetFocus = () => {
 
   // 상태 변화 디버깅
   useEffect(() => {
-    console.log('Focus state changed:', {
-      focusedWidgetId: focusState.focusedWidgetId,
-      selectedWidgetIds: Array.from(focusState.selectedWidgetIds),
-      selectionCount: focusState.selectedWidgetIds.size
-    });
   }, [focusState]);
 
   return {
