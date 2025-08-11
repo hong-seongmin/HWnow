@@ -34,6 +34,17 @@ export type SystemResourceData = {
     memory: number;
   }>;
   
+  // GPU 프로세스 정보 (최신 상태만 저장)
+  gpu_processes: Array<{
+    pid: number;
+    name: string;
+    gpu_usage: number;
+    gpu_memory: number;
+    type: string;
+    command: string;
+    status: string;
+  }>;
+  
   // GPU 관련
   gpu_usage: number[];
   gpu_memory_used: number[];
@@ -46,6 +57,8 @@ export type SystemResourceData = {
 interface SystemResourceState {
   data: SystemResourceData;
   setData: (type: WidgetType | string, value: number, info?: string) => void;
+  setGPUProcesses: (processes: SystemResourceData['gpu_processes']) => void;
+  clearGPUProcesses: () => void;
   maxDataPoints: number;
 }
 
@@ -77,6 +90,9 @@ const initialState: SystemResourceData = {
   // 프로세스 정보
   processes: [],
   
+  // GPU 프로세스 정보
+  gpu_processes: [],
+  
   // GPU 관련
   gpu_usage: [],
   gpu_memory_used: [],
@@ -89,6 +105,22 @@ const initialState: SystemResourceData = {
 export const useSystemResourceStore = create<SystemResourceState>((set) => ({
   data: initialState,
   maxDataPoints: 200, // Default max points
+  setGPUProcesses: (processes) => {
+    set((state) => ({
+      data: {
+        ...state.data,
+        gpu_processes: processes,
+      },
+    }));
+  },
+  clearGPUProcesses: () => {
+    set((state) => ({
+      data: {
+        ...state.data,
+        gpu_processes: [],
+      },
+    }));
+  },
   setData: (type, value, info) => {
     set((state) => {
       // Handle CPU info separately
@@ -156,6 +188,31 @@ export const useSystemResourceStore = create<SystemResourceState>((set) => ({
             data: {
               ...state.data,
               processes: newProcesses,
+            },
+          };
+        }
+      }
+      
+      // Handle GPU process data
+      if (type.startsWith('gpu_process_')) {
+        const processIndex = parseInt(type.replace('gpu_process_', ''));
+        if (info) {
+          const [name, pid, gpu_memory, processType, command, status] = info.split('|');
+          const newGpuProcesses = [...state.data.gpu_processes];
+          newGpuProcesses[processIndex] = {
+            pid: parseInt(pid),
+            name,
+            gpu_usage: value,
+            gpu_memory: parseFloat(gpu_memory),
+            type: processType,
+            command,
+            status,
+          };
+          
+          return {
+            data: {
+              ...state.data,
+              gpu_processes: newGpuProcesses,
             },
           };
         }

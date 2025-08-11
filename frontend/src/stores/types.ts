@@ -2,7 +2,7 @@ import type { Layout } from 'react-grid-layout';
 
 // Widget types
 export type WidgetType = 'cpu' | 'ram' | 'disk_read' | 'disk_write' | 'net_sent' | 'net_recv' | 
-  'gpu' | 'system_uptime' | 'process_monitor' | 'battery' | 'disk_space' | 'network_status' | 
+  'gpu' | 'gpu_process' | 'system_uptime' | 'process_monitor' | 'battery' | 'disk_space' | 'network_status' | 
   'memory_detail' | 'system_log';
 
 // 위젯 설정 타입
@@ -42,6 +42,40 @@ export interface WidgetConfig {
   // 프로세스 모니터링
   processCount?: number;
   sortBy?: 'cpu' | 'memory' | 'name';
+  
+  // GPU 프로세스 모니터링 (기본 설정)
+  gpuProcessCount?: number;
+  gpuSortBy?: 'gpu_usage' | 'gpu_memory' | 'name' | 'pid' | 'type' | 'status';
+  gpuSortOrder?: 'asc' | 'desc';
+  
+  // GPU 프로세스 필터링
+  gpuFilterEnabled?: boolean;
+  gpuUsageThreshold?: number;
+  gpuMemoryThreshold?: number;
+  gpuFilterType?: 'and' | 'or';
+  
+  // GPU 프로세스 실시간 업데이트
+  gpuShowUpdateIndicators?: boolean;
+  gpuEnableUpdateAnimations?: boolean;
+  gpuUpdateInterval?: number;
+  
+  // GPU 프로세스 시각적 피드백
+  gpuShowStatusColors?: boolean;
+  gpuShowUsageGradients?: boolean;
+  gpuShowProcessIcons?: boolean;
+  gpuShowStatusAnimations?: boolean;
+  
+  // GPU 프로세스 제어
+  gpuEnableProcessControl?: boolean;
+  gpuShowControlButtons?: boolean;
+  gpuEnableContextMenu?: boolean;
+  gpuRequireConfirmation?: boolean;
+  
+  // GPU 프로세스 표시
+  gpuShowProcessPriority?: boolean;
+  gpuShowProcessCommand?: boolean;
+  gpuShowLastUpdateTime?: boolean;
+  gpuCompactView?: boolean;
   
   // 배터리 위젯
   showBatteryTime?: boolean;
