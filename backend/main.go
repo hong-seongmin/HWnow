@@ -51,7 +51,7 @@ func getDefaultConfig() Config {
 			Port int    `json:"port"`
 			Host string `json:"host"`
 		}{
-			Port: 8080,
+			Port: 8081,
 			Host: "localhost",
 		},
 		Database: struct {
