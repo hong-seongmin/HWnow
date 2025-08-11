@@ -159,6 +159,25 @@ const widgetOptions: WidgetOption[] = [
     ),
   },
   {
+    type: 'gpu_process',
+    label: 'GPU Processes',
+    description: 'Monitor and control GPU processes',
+    category: 'System Info',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+        <line x1="8" y1="21" x2="16" y2="21" />
+        <line x1="12" y1="17" x2="12" y2="21" />
+        <rect x="5" y="6" width="3" height="2" rx="1" />
+        <rect x="10" y="6" width="3" height="2" rx="1" />
+        <rect x="15" y="6" width="3" height="2" rx="1" />
+        <rect x="5" y="10" width="3" height="2" rx="1" />
+        <rect x="10" y="10" width="3" height="2" rx="1" />
+        <rect x="15" y="10" width="3" height="2" rx="1" />
+      </svg>
+    ),
+  },
+  {
     type: 'battery',
     label: 'Battery Status',
     description: 'Monitor battery level',
@@ -211,6 +230,14 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ isOpen, position, onCl
   }, {} as Record<string, WidgetOption[]>);
 
   const categories = Object.keys(widgetsByCategory);
+  
+  // Debug logging
+  console.log('ContextMenu Debug - widgetOptions length:', widgetOptions.length);
+  console.log('ContextMenu Debug - widgetsByCategory:', widgetsByCategory);
+  console.log('ContextMenu Debug - System Info widgets:', widgetsByCategory['System Info']);
+  console.log('ContextMenu Debug - System Info widget details:', 
+    widgetsByCategory['System Info']?.map(w => ({ type: w.type, label: w.label })));
+  console.log('ContextMenu Debug - GPU Process widget found:', widgetOptions.find(w => w.type === 'gpu_process'));
   
 
   useEffect(() => {
@@ -356,13 +383,17 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ isOpen, position, onCl
                 onMouseEnter={handleSubmenuEnter}
                 onMouseLeave={handleSubmenuLeave}
               >
-                {widgetsByCategory[category].map((widget) => (
-                  <button
-                    key={widget.type}
-                    className="context-menu-item"
-                    onClick={() => handleAddWidget(widget.type, widget.label)}
-                    title={widget.description}
-                  >
+                {widgetsByCategory[category].map((widget) => {
+                  if (category === 'System Info') {
+                    console.log(`Rendering ${category} widget:`, widget.type, widget.label);
+                  }
+                  return (
+                    <button
+                      key={widget.type}
+                      className="context-menu-item"
+                      onClick={() => handleAddWidget(widget.type, widget.label)}
+                      title={widget.description}
+                    >
                     <div className="context-menu-item-icon">
                       {widget.icon}
                     </div>
@@ -370,8 +401,9 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ isOpen, position, onCl
                       <span className="context-menu-item-label">{widget.label}</span>
                       <span className="context-menu-item-description">{widget.description}</span>
                     </div>
-                  </button>
-                ))}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>

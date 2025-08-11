@@ -12,6 +12,7 @@ import NetworkStatusWidget from '../widgets/NetworkStatusWidget';
 import ProcessMonitorWidget from '../widgets/ProcessMonitorWidget';
 import SystemLogWidget from '../widgets/SystemLogWidget';
 import GpuWidget from '../widgets/GpuWidget';
+import GpuProcessWidget from '../widgets/GpuProcessWidget';
 import './WidgetFullscreen.css';
 
 const widgetMap: { [key in WidgetType]: React.ComponentType<{ widgetId: string; onRemove: () => void; isExpanded?: boolean }> } = {
@@ -22,6 +23,7 @@ const widgetMap: { [key in WidgetType]: React.ComponentType<{ widgetId: string; 
   net_sent: NetworkWidget,
   net_recv: NetworkWidget,
   gpu: GpuWidget,
+  gpu_process: GpuProcessWidget,
   system_uptime: SystemUptimeWidget,
   process_monitor: ProcessMonitorWidget,
   battery: BatteryWidget,
