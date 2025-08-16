@@ -58,6 +58,7 @@ if "%MODE%"=="1" (
     echo Building and running HWnow...
     
     call :check_requirements
+    call :kill_existing_processes
     call :build_frontend
     call :build_backend
     
@@ -103,7 +104,7 @@ exit /b
 ::  Functions
 :: ===================================================================
 :check_requirements
-echo [1/3] Checking requirements...
+echo [1/4] Checking requirements...
 
 echo [DEBUG] Checking Node.js...
 node --version >nul 2>&1
@@ -129,8 +130,24 @@ echo [DEBUG] Go OK
 echo Requirements OK
 goto :eof
 
+:kill_existing_processes
+echo [1.5/4] Stopping existing processes...
+
+:: Kill existing HWnow.exe processes
+echo [INFO] Checking for existing HWnow.exe processes...
+taskkill /IM "HWnow.exe" /F >NUL 2>&1
+if "%ERRORLEVEL%"=="0" (
+    echo [INFO] Existing HWnow.exe process terminated successfully.
+    ping 127.0.0.1 -n 3 >NUL 2>&1
+) else (
+    echo [INFO] No existing HWnow.exe process found.
+)
+
+echo Process cleanup complete
+goto :eof
+
 :build_frontend
-echo [2/3] Building frontend...
+echo [2/4] Building frontend...
 cd frontend
 
 :: Check if dist already exists and skip npm steps if so
@@ -171,7 +188,7 @@ echo Frontend build complete
 goto :eof
 
 :build_backend
-echo [3/3] Building backend...
+echo [3/4] Building backend...
 
 :: Copy frontend files
 if exist "backend\\dist" rmdir /s /q "backend\\dist"
