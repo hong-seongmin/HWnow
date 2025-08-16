@@ -1,4 +1,4 @@
-import React, { memo, useState } from 'react';
+import React, { memo, useState, useRef, useEffect } from 'react';
 import { useSystemResourceStore } from '../../stores/systemResourceStore';
 import { useDashboardStore } from '../../stores/dashboardStore';
 import { SettingsModal } from '../common/SettingsModal';
@@ -37,6 +37,10 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
   // Keyboard navigation state
   const [focusedRowIndex, setFocusedRowIndex] = useState<number>(-1);
   const [isKeyboardNavigation, setIsKeyboardNavigation] = useState<boolean>(false);
+  
+  // Widget sizing for dynamic item scaling
+  const widgetRef = useRef<HTMLDivElement>(null);
+  const [widgetSizeCategory, setWidgetSizeCategory] = useState<string>('medium');
   
   const { showConfirm, ConfirmComponent } = useConfirmDialog();
   const { showProcessSuccess, showProcessError, showBulkProcessResult } = useToast();
@@ -209,6 +213,47 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
       }
     }
   }, [focusedRowIndex, isKeyboardNavigation]);
+
+  // Widget size detection for dynamic item sizing
+  useEffect(() => {
+    const detectWidgetSize = () => {
+      if (widgetRef.current) {
+        const rect = widgetRef.current.getBoundingClientRect();
+        const height = rect.height;
+        
+        // Determine size category based on height
+        let category: string;
+        if (height < 300) {
+          category = 'small';
+        } else if (height < 500) {
+          category = 'medium';
+        } else if (height < 700) {
+          category = 'large';
+        } else if (height < 1000) {
+          category = 'extra-large';
+        } else {
+          category = 'ultra-large';
+        }
+        
+        if (category !== widgetSizeCategory) {
+          setWidgetSizeCategory(category);
+        }
+      }
+    };
+    
+    // Initial detection
+    detectWidgetSize();
+    
+    // Set up resize observer for dynamic detection
+    const resizeObserver = new ResizeObserver(detectWidgetSize);
+    if (widgetRef.current) {
+      resizeObserver.observe(widgetRef.current);
+    }
+    
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [widgetSizeCategory]);
 
   // 키보드 단축키 도움말 표시
   const showKeyboardShortcutsHelp = () => {
@@ -1106,7 +1151,9 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
     <>
       <div 
         id={`gpu-process-widget-${widgetId}`}
+        ref={widgetRef}
         className={`widget widget-gpu-process ${filterEnabled ? 'filtering-enabled' : ''}`} 
+        data-widget-height={widgetSizeCategory}
         role="region" 
         aria-label="GPU Process Monitor"
         tabIndex={-1}
@@ -1245,9 +1292,9 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
               style={{
                 display: 'flex',
                 justifyContent: 'space-around',
-                padding: '0.5rem 0',
+                padding: '0.25rem 0',
                 borderBottom: '1px solid var(--color-border)',
-                marginBottom: '0.5rem',
+                marginBottom: '0.25rem',
                 fontSize: '0.75rem'
               }}
             >
