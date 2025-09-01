@@ -1,45 +1,18 @@
 @echo off
 
-TITLE HWnow Launcher
+TITLE HWnow Wails Launcher
 
 :: ===================================================================
-::  Configuration Check
-:: ===================================================================
-if not exist "config.json" (
-    echo [INFO] Creating default config.json file...
-    echo {> config.json
-    echo   "server": {>> config.json
-    echo     "port": 8080,>> config.json
-    echo     "host": "localhost">> config.json
-    echo   },>> config.json
-    echo   "database": {>> config.json
-    echo     "filename": "monitoring.db">> config.json
-    echo   },>> config.json
-    echo   "monitoring": {>> config.json
-    echo     "interval_seconds": 2,>> config.json
-    echo     "enable_cpu_monitoring": true,>> config.json
-    echo     "enable_memory_monitoring": true,>> config.json
-    echo     "enable_disk_monitoring": true,>> config.json
-    echo     "enable_network_monitoring": true>> config.json
-    echo   },>> config.json
-    echo   "ui": {>> config.json
-    echo     "auto_open_browser": false,>> config.json
-    echo     "theme": "system">> config.json
-    echo   }>> config.json
-    echo }>> config.json
-    echo [INFO] Default config.json created.
-    echo.
-)
-
-:: ===================================================================
-::  HWnow Launcher
+::  HWnow Wails Application Launcher
 :: ===================================================================
 echo ===================================================================
-echo  HWnow Launcher
+echo  HWnow Wails Application Launcher
 echo ===================================================================
 echo.
-echo  [1] Build and Run
-echo  [2] Build Only
+echo  [1] Build and Run (Development)
+echo  [2] Build Production Executable
+echo  [3] Run Development Server
+echo  [4] Run Existing Wails Application
 echo.
 
 :: Use command line argument if provided, otherwise ask for user input
@@ -47,56 +20,61 @@ if "%1" NEQ "" (
     set MODE=%1
     echo Mode %1 selected
 ) else (
-    set /p MODE="Select mode (1 or 2): "
+    set /p MODE="Select mode (1, 2, 3, or 4): "
 )
 
 :: ===================================================================
-::  Mode 1: Build and Run
+::  Mode 1: Build and Run (Development)
 :: ===================================================================
 if "%MODE%"=="1" (
     echo.
-    echo Building and running HWnow...
+    echo Building and running HWnow Wails application...
     
     call :check_requirements
     call :kill_existing_processes
-    call :build_frontend
-    call :build_backend
-    
-    echo.
-    echo Starting HWnow...
-    echo ===================================================================
-    echo      HWnow is running (check console for actual port)
-    echo      Default: http://localhost:8080 (configurable via config.json)
-    echo      Press Ctrl+C to stop
-    echo ===================================================================
-    call .\HWnow.exe
+    call :build_and_run_dev
     goto end
 )
 
 :: ===================================================================
-::  Mode 2: Build Only
+::  Mode 2: Build Production Executable  
 :: ===================================================================
 if "%MODE%"=="2" (
     echo.
-    echo Building HWnow executable...
+    echo Building HWnow production executable...
     
     call :check_requirements
-    call :build_frontend
-    call :build_backend
-    
-    echo.
-    echo ===================================================================
-    echo  Build Complete!
-    echo ===================================================================
-    echo  Created: HWnow.exe
-    for %%I in (HWnow.exe) do echo  Size: %%~zI bytes
-    echo.
-    echo  Usage: Run HWnow.exe and check console for port (default: 8080)
-    echo ===================================================================
+    call :kill_existing_processes
+    call :build_production
     goto end
 )
 
-echo [ERROR] Invalid selection. Please enter 1 or 2.
+:: ===================================================================
+::  Mode 3: Run Development Server
+:: ===================================================================
+if "%MODE%"=="3" (
+    echo.
+    echo Starting HWnow development server...
+    
+    call :check_requirements
+    call :kill_existing_processes
+    call :run_dev_server
+    goto end
+)
+
+:: ===================================================================
+::  Mode 4: Run Existing Wails Application
+:: ===================================================================
+if "%MODE%"=="4" (
+    echo.
+    echo Running existing HWnow Wails application...
+    
+    call :kill_existing_processes
+    call :run_wails_app
+    goto end
+)
+
+echo [ERROR] Invalid selection. Please enter 1, 2, 3, or 4.
 pause
 exit /b
 
@@ -115,9 +93,6 @@ if errorlevel 1 (
 )
 echo [DEBUG] Node.js OK
 
-echo [DEBUG] Checking NPM...
-echo [DEBUG] NPM OK (skipped - Node.js includes NPM)
-
 echo [DEBUG] Checking Go...
 go version >nul 2>&1
 if errorlevel 1 (
@@ -127,90 +102,188 @@ if errorlevel 1 (
 )
 echo [DEBUG] Go OK
 
+echo [DEBUG] Checking Wails...
+wails version >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] Wails not found. Install with: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+    pause
+    exit /b
+)
+echo [DEBUG] Wails OK
+
 echo Requirements OK
 goto :eof
 
 :kill_existing_processes
 echo [1.5/4] Stopping existing processes...
 
-:: Kill existing HWnow.exe processes
-echo [INFO] Checking for existing HWnow.exe processes...
+:: Kill existing HWnow processes
+echo [INFO] Checking for existing HWnow processes...
+taskkill /IM "HWnow-wails.exe" /F >NUL 2>&1
 taskkill /IM "HWnow.exe" /F >NUL 2>&1
 if "%ERRORLEVEL%"=="0" (
-    echo [INFO] Existing HWnow.exe process terminated successfully.
+    echo [INFO] Existing HWnow process terminated successfully.
     ping 127.0.0.1 -n 3 >NUL 2>&1
 ) else (
-    echo [INFO] No existing HWnow.exe process found.
+    echo [INFO] No existing HWnow process found.
 )
 
 echo Process cleanup complete
 goto :eof
 
-:build_frontend
-echo [2/4] Building frontend...
-cd frontend
+:build_and_run_dev
+echo [2/4] Building and running Wails application in development mode...
 
-:: Check if dist already exists and skip npm steps if so
-if exist "dist" (
-    echo [INFO] Frontend already built, skipping npm steps...
+cd HWnow-wails\HWnow-wails
+
+:: Check if frontend dependencies are installed
+if not exist "frontend\node_modules" (
+    echo [INFO] Installing frontend dependencies...
+    cd frontend
+    npm install
+    if errorlevel 1 (
+        echo [ERROR] Failed to install frontend dependencies.
+        cd ..\..
+        pause
+        exit /b
+    )
     cd ..
-    echo Frontend build complete
-    goto :eof
 )
 
-:: Install or update dependencies with timeout
-echo [INFO] Installing/updating dependencies...
-if not exist "node_modules" (
-    call npm install --no-optional --silent
+:: Build and run with Wails
+echo [INFO] Starting Wails development build...
+wails build
+if errorlevel 1 (
+    echo [ERROR] Failed to build Wails application.
+    cd ..\..
+    pause
+    exit /b
+)
+
+echo.
+echo ===================================================================
+echo      HWnow Wails Application Built Successfully!
+echo      Running the application...
+echo ===================================================================
+
+:: Run the built application
+if exist "build\bin\HWnow-wails.exe" (
+    start "" "build\bin\HWnow-wails.exe"
+    echo [INFO] HWnow application started successfully!
 ) else (
-    call npm ci --silent
+    echo [ERROR] Built executable not found.
 )
 
-if errorlevel 1 (
-    echo [ERROR] Failed to install dependencies.
-    cd ..
-    pause
-    exit /b
-)
-
-:: Build frontend
-echo [INFO] Building frontend...
-call npm run build
-if errorlevel 1 (
-    echo [ERROR] Failed to build frontend.
-    cd ..
-    pause
-    exit /b
-)
-
-cd ..
-echo Frontend build complete
+cd ..\..
 goto :eof
 
-:build_backend
-echo [3/4] Building backend...
+:build_production
+echo [2/4] Building production executable...
 
-:: Copy frontend files
-if exist "backend\\dist" rmdir /s /q "backend\\dist"
-xcopy "frontend\\dist" "backend\\dist" /E /I /Q
-if errorlevel 1 (
-    echo [ERROR] Failed to copy frontend files.
-    pause
-    exit /b
-)
+cd HWnow-wails\HWnow-wails
 
-:: Build Go executable
-cd backend
-go build -o ..\HWnow.exe main.go
-if errorlevel 1 (
-    echo [ERROR] Failed to build backend.
+:: Check if frontend dependencies are installed
+if not exist "frontend\node_modules" (
+    echo [INFO] Installing frontend dependencies...
+    cd frontend
+    npm install
+    if errorlevel 1 (
+        echo [ERROR] Failed to install frontend dependencies.
+        cd ..\..
+        pause
+        exit /b
+    )
     cd ..
+)
+
+:: Build production version
+echo [INFO] Building production executable...
+wails build -clean
+if errorlevel 1 (
+    echo [ERROR] Failed to build production executable.
+    cd ..\..
     pause
     exit /b
 )
-cd ..
 
-echo Backend build complete
+:: Copy executable to root directory for convenience
+if exist "build\bin\HWnow-wails.exe" (
+    copy "build\bin\HWnow-wails.exe" "..\..\HWnow-wails.exe"
+    echo.
+    echo ===================================================================
+    echo  Production Build Complete!
+    echo ===================================================================
+    echo  Created: HWnow-wails.exe
+    for %%I in (..\..\HWnow-wails.exe) do echo  Size: %%~zI bytes
+    echo.
+    echo  Usage: Double-click HWnow-wails.exe to run the application
+    echo ===================================================================
+) else (
+    echo [ERROR] Production executable not found.
+)
+
+cd ..\..
+goto :eof
+
+:run_dev_server
+echo [2/4] Starting development server...
+
+cd HWnow-wails\HWnow-wails
+
+:: Check if frontend dependencies are installed
+if not exist "frontend\node_modules" (
+    echo [INFO] Installing frontend dependencies...
+    cd frontend
+    npm install
+    if errorlevel 1 (
+        echo [ERROR] Failed to install frontend dependencies.
+        cd ..\..
+        pause
+        exit /b
+    )
+    cd ..
+)
+
+:: Run development server with live reload
+echo [INFO] Starting Wails development server with live reload...
+echo.
+echo ===================================================================
+echo      HWnow Development Server
+echo      The application will open automatically
+echo      Changes will be automatically reloaded
+echo      Press Ctrl+C to stop
+echo ===================================================================
+
+wails dev
+if errorlevel 1 (
+    echo [ERROR] Failed to start development server.
+)
+
+cd ..\..
+goto :eof
+
+:run_wails_app
+echo [2/2] Running existing HWnow Wails application...
+
+if exist "HWnow-wails.exe" (
+    echo [INFO] Starting HWnow Wails application...
+    echo.
+    echo ===================================================================
+    echo      HWnow Wails Application
+    echo      Native desktop application with system tray support
+    echo      Press Alt+F4 or use File->Quit to exit
+    echo ===================================================================
+    
+    start "" "HWnow-wails.exe"
+    echo [INFO] HWnow Wails application started successfully!
+) else (
+    echo [ERROR] HWnow-wails.exe not found. Please build the application first using mode 1 or 2.
+    echo.
+    echo Available executables:
+    if exist "HWnow.exe" echo   - HWnow.exe (Legacy version)
+    echo.
+    pause
+)
 goto :eof
 
 :end
