@@ -40,6 +40,7 @@ Thumbs.db
 
 # Claude Code
 .claude/ 
+기획/
 
 # Markdown files
 *.md
