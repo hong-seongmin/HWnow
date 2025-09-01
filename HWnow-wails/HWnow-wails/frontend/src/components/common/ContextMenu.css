@@ -1,0 +1,172 @@
+.context-menu {
+  min-width: 240px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(8px);
+  z-index: 1000;
+  overflow: visible;
+}
+
+.context-menu-header {
+  padding: 12px 16px;
+  background: var(--color-surface-hover);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.context-menu-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.context-menu-content {
+  padding: 8px 0;
+  overflow: visible;
+}
+
+.context-menu-category {
+  position: relative;
+  overflow: visible;
+}
+
+.context-menu-category-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background-color 0.2s ease;
+}
+
+.context-menu-category-header:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+
+.context-menu-category-title {
+  flex: 1;
+}
+
+.context-menu-arrow {
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+
+.context-menu-category-header:hover .context-menu-arrow {
+  opacity: 1;
+}
+
+.context-menu-submenu {
+  position: absolute;
+  left: 100%;
+  top: 0;
+  min-width: 280px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(8px);
+  z-index: 1001;
+  overflow: hidden;
+  margin-left: -4px;
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  transition: background-color 0.2s ease;
+  text-align: left;
+}
+
+.context-menu-item:hover {
+  background: var(--color-surface-hover);
+}
+
+.context-menu-item:active {
+  background: var(--color-surface-active);
+}
+
+.context-menu-item-icon {
+  width: 18px;
+  height: 18px;
+  margin-right: 12px;
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+}
+
+.context-menu-item-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.context-menu-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.context-menu-item-label {
+  display: block;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  margin-bottom: 2px;
+}
+
+.context-menu-item-description {
+  display: block;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  opacity: 0.8;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .context-menu {
+    min-width: 200px;
+  }
+  
+  .context-menu-submenu {
+    min-width: 240px;
+  }
+  
+  .context-menu-item {
+    padding: 10px 12px;
+  }
+  
+  .context-menu-item-icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 10px;
+  }
+}
+
+/* Animation */
+@keyframes contextMenuFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.context-menu {
+  animation: contextMenuFadeIn 0.15s ease-out;
+}
+
+.context-menu-submenu {
+  animation: contextMenuFadeIn 0.12s ease-out;
+}

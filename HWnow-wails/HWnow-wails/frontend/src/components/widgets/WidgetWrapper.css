@@ -1,0 +1,70 @@
+.widget-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+/* 포커스 상태 */
+.widget-wrapper.widget-focused {
+  box-shadow: 0 0 0 2px #007acc;
+  border-radius: 4px;
+  z-index: 1;
+}
+
+/* 선택 상태 */
+.widget-wrapper.widget-selected {
+  box-shadow: 0 0 0 3px #0066cc;
+  border-radius: 4px;
+  z-index: 2;
+}
+
+/* 포커스 + 선택 상태 */
+.widget-wrapper.widget-focused.widget-selected {
+  box-shadow: 
+    0 0 0 2px #007acc,
+    0 0 0 4px #0066cc;
+  border-radius: 4px;
+  z-index: 3;
+}
+
+/* 호버 효과 */
+.widget-wrapper:hover {
+  box-shadow: 0 0 0 1px rgba(0, 122, 204, 0.5);
+  border-radius: 4px;
+}
+
+.widget-wrapper.widget-focused:hover,
+.widget-wrapper.widget-selected:hover {
+  /* 이미 포커스/선택된 경우 호버 효과 무시 */
+}
+
+/* 접근성 개선 */
+.widget-wrapper:focus-visible {
+  box-shadow: 0 0 0 2px #007acc;
+  border-radius: 4px;
+}
+
+/* 다크 테마 지원 */
+.dark .widget-wrapper.widget-focused {
+  box-shadow: 0 0 0 2px #4da6ff;
+}
+
+.dark .widget-wrapper.widget-selected {
+  box-shadow: 0 0 0 3px #3399ff;
+}
+
+.dark .widget-wrapper.widget-focused.widget-selected {
+  box-shadow: 
+    0 0 0 2px #4da6ff,
+    0 0 0 4px #3399ff;
+}
+
+.dark .widget-wrapper:hover {
+  box-shadow: 0 0 0 1px rgba(77, 166, 255, 0.5);
+}
+
+.dark .widget-wrapper:focus-visible {
+  box-shadow: 0 0 0 2px #4da6ff;
+}

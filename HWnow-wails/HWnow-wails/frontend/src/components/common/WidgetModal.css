@@ -1,0 +1,209 @@
+.widget-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.widget-modal-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+}
+
+.widget-modal-content {
+  position: relative;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  max-width: 95vw;
+  max-height: 95vh;
+  overflow: hidden;
+  animation: slideIn 0.2s ease-out;
+  border: 1px solid var(--color-border);
+}
+
+.widget-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-hover);
+}
+
+.widget-modal-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.widget-modal-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.widget-modal-close:hover {
+  background: var(--color-surface-active);
+  color: var(--color-text-primary);
+}
+
+.widget-modal-body {
+  padding: 24px;
+  overflow: auto;
+  max-height: calc(95vh - 80px);
+}
+
+/* 확대된 위젯 스타일 */
+.widget-modal-body .widget {
+  box-shadow: none;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.widget-modal-body .widget-header {
+  display: none; /* 모달에서는 위젯 헤더 숨김 */
+}
+
+.widget-modal-body .widget-content {
+  padding: 0;
+}
+
+/* 확대된 위젯을 위한 특별한 스타일 */
+.widget-modal-body .widget[data-expanded="true"] {
+  /* 차트 크기 증가 */
+  --chart-height: 400px;
+  --chart-width: 100%;
+  
+  /* 폰트 크기 증가 */
+  --font-size-small: 14px;
+  --font-size-medium: 16px;
+  --font-size-large: 20px;
+}
+
+.widget-modal-body .widget[data-expanded="true"] .recharts-wrapper {
+  font-size: var(--font-size-medium);
+}
+
+.widget-modal-body .widget[data-expanded="true"] .widget-value {
+  font-size: 3rem;
+}
+
+.widget-modal-body .widget[data-expanded="true"] .widget-label {
+  font-size: 1.1rem;
+}
+
+/* 위젯 타입별 최적 크기 */
+.widget-modal-content[data-widget-type="cpu"],
+.widget-modal-content[data-widget-type="ram"],
+.widget-modal-content[data-widget-type="gpu"],
+.widget-modal-content[data-widget-type="disk_read"],
+.widget-modal-content[data-widget-type="net_sent"] {
+  width: 700px;
+  height: 500px;
+}
+
+.widget-modal-content[data-widget-type="disk_space"] {
+  width: 600px;
+  height: 600px;
+}
+
+.widget-modal-content[data-widget-type="process_monitor"] {
+  width: 900px;
+  height: 700px;
+}
+
+.widget-modal-content[data-widget-type="system_log"] {
+  width: 1000px;
+  height: 800px;
+}
+
+.widget-modal-content[data-widget-type="network_status"] {
+  width: 800px;
+  height: 600px;
+}
+
+.widget-modal-content[data-widget-type="memory_detail"] {
+  width: 800px;
+  height: 600px;
+}
+
+.widget-modal-content[data-widget-type="battery"] {
+  width: 500px;
+  height: 400px;
+}
+
+.widget-modal-content[data-widget-type="system_uptime"] {
+  width: 600px;
+  height: 300px;
+}
+
+/* 애니메이션 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* 반응형 디자인 */
+@media (max-width: 768px) {
+  .widget-modal-content {
+    margin: 10px;
+    max-width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+  }
+  
+  .widget-modal-content[data-widget-type="process_monitor"],
+  .widget-modal-content[data-widget-type="system_log"] {
+    width: auto;
+    height: auto;
+  }
+  
+  .widget-modal-header {
+    padding: 16px;
+  }
+  
+  .widget-modal-body {
+    padding: 16px;
+    max-height: calc(100vh - 100px);
+  }
+  
+  .widget-modal-title {
+    font-size: 1.1rem;
+  }
+}

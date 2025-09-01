@@ -1,0 +1,21 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "HWnow-wails",
+  "outputfilename": "HWnow-wails",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "build": {
+    "compiler": "go",
+    "ldflags": "-H windowsgui -s -w",
+    "tags": [],
+    "race": false,
+    "upx": false,
+    "upxflags": ""
+  },
+  "author": {
+    "name": "solon",
+    "email": "74405191+hong-seongmin@users.noreply.github.com"
+  }
+}

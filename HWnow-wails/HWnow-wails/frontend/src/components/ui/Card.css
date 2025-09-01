@@ -1,0 +1,90 @@
+/* Card Base */
+.card {
+  background-color: var(--color-surface);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  transition: all var(--transition-normal);
+  position: relative;
+}
+
+/* Card Variants */
+.card--default {
+  border: 1px solid var(--color-border);
+}
+
+.card--bordered {
+  border: 2px solid var(--color-border-light);
+}
+
+.card--elevated {
+  box-shadow: var(--shadow-lg);
+  border: none;
+}
+
+.card--elevated:hover {
+  box-shadow: var(--shadow-xl);
+  transform: translateY(-2px);
+}
+
+/* Card Padding */
+.card--padding-none {
+  padding: 0;
+}
+
+.card--padding-sm {
+  padding: var(--space-3);
+}
+
+.card--padding-md {
+  padding: var(--space-4);
+}
+
+.card--padding-lg {
+  padding: var(--space-6);
+}
+
+/* Card Sections */
+.card-header {
+  padding: var(--space-4) var(--space-4) var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  background-color: var(--color-background-secondary);
+}
+
+.card-header:last-child {
+  border-bottom: none;
+  padding-bottom: var(--space-4);
+}
+
+.card-content {
+  padding: var(--space-4);
+  flex: 1;
+}
+
+.card-footer {
+  padding: var(--space-2) var(--space-4) var(--space-4) var(--space-4);
+  border-top: 1px solid var(--color-border);
+  background-color: var(--color-background-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.card-footer:first-child {
+  border-top: none;
+  padding-top: var(--space-4);
+}
+
+/* Nested Card adjustments */
+.card .card-header + .card-content {
+  padding-top: var(--space-4);
+}
+
+.card .card-content + .card-footer {
+  padding-top: var(--space-2);
+}
+
+/* When only content exists */
+.card .card-content:only-child {
+  padding: var(--space-4);
+} 
