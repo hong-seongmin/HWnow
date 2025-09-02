@@ -23,6 +23,15 @@ const getUserId = (): string => {
   return 'global-user';
 };
 
+// 위젯 상태 비교를 위한 해시 생성 함수
+const generateStateHash = (widgets: Widget[], layouts: Layout[]): string => {
+  const stateData = {
+    widgets: widgets.map(w => ({ i: w.i, type: w.type, config: w.config })),
+    layouts: layouts.map(l => ({ i: l.i, x: l.x, y: l.y, w: l.w, h: l.h }))
+  };
+  return JSON.stringify(stateData);
+};
+
 const createNewPage = (name: string): Page => ({
   id: uuidv4(),
   name,
@@ -38,19 +47,30 @@ const defaultPage: Page = {
 };
 
 // Enhanced Dashboard Store with Wails integration
-export const useDashboardStore = create<DashboardState>()(
+// 추가 상태 타입 정의
+interface ExtendedDashboardState extends DashboardState {
+  lastSavedHash: string | null;
+  isAutosaving: boolean;
+}
+
+export const useDashboardStore = create<ExtendedDashboardState>()(
   wailsMiddleware(
     (set, get) => ({
   pages: [defaultPage],
   activePageIndex: 0,
   isInitialized: false,
+  lastSavedHash: null,
+  isAutosaving: false,
 
   actions: {
     initialize: async () => {
       const userId = getUserId();
+      console.log('[Dashboard] Initializing dashboard, loading from server...');
+      
       try {
         // 페이지 목록 로드
         const pageStates = await getPages(userId);
+        console.log('[Dashboard] Loaded pages from server:', pageStates?.length || 0);
         
         if (pageStates && pageStates.length > 0) {
           // 각 페이지의 위젯들을 로드
@@ -58,6 +78,7 @@ export const useDashboardStore = create<DashboardState>()(
           
           for (const pageState of pageStates) {
             const widgetStates = await getWidgets(userId, pageState.pageId);
+            console.log(`[Dashboard] Loaded widgets for page ${pageState.pageId}:`, widgetStates.length);
             
             const widgets: Widget[] = [];
             const layouts: Layout[] = [];
@@ -95,33 +116,23 @@ export const useDashboardStore = create<DashboardState>()(
             });
           }
           
-          set({ pages, activePageIndex: 0, isInitialized: true });
+          // 초기 상태 해시 계산
+          const initialHash = pages.length > 0 ? generateStateHash(pages[0].widgets, pages[0].layouts) : null;
+          set({ pages, activePageIndex: 0, isInitialized: true, lastSavedHash: initialHash });
         } else {
           // 페이지가 없으면 기본 페이지 생성
-          set({ pages: [defaultPage], activePageIndex: 0, isInitialized: true });
+          const initialHash = generateStateHash(defaultPage.widgets, defaultPage.layouts);
+          set({ pages: [defaultPage], activePageIndex: 0, isInitialized: true, lastSavedHash: initialHash });
         }
         
       } catch (error) {
         console.error("Failed to initialize dashboard from server", error);
         
-        // 서버에서 로드 실패시 localStorage 백업 확인
-        try {
-          const backup = localStorage.getItem('hwnow_dashboard_backup');
-          if (backup) {
-            const savedState = JSON.parse(backup);
-            console.log("Loaded state from localStorage backup");
-            set({ 
-              pages: savedState.pages || [defaultPage], 
-              activePageIndex: savedState.activePageIndex || 0, 
-              isInitialized: true 
-            });
-            return;
-          }
-        } catch (localErr) {
-          console.error("Failed to load from localStorage:", localErr);
-        }
-        
-        set({ pages: [defaultPage], activePageIndex: 0, isInitialized: true });
+        // 서버 데이터 로드 실패 시 기본 페이지로 초기화
+        // localStorage 백업은 사용하지 않아 데이터 일관성 보장
+        console.warn("Server data unavailable, initializing with default page");
+        const fallbackHash = generateStateHash(defaultPage.widgets, defaultPage.layouts);
+        set({ pages: [defaultPage], activePageIndex: 0, isInitialized: true, lastSavedHash: fallbackHash });
       }
     },
 
@@ -291,11 +302,16 @@ export const useDashboardStore = create<DashboardState>()(
       
       try {
         await deleteWidget(userId, widgetId, activePage.id);
-        // No need to call saveState, as the deletion is final
+        console.log(`Widget ${widgetId} deleted successfully from database`);
+        
+        // 삭제는 데이터베이스에서 직접 처리되므로 추가 상태 저장 불필요
+        // saveStateImmediate() 호출 제거하여 삭제된 위젯이 다시 추가되는 것을 방지
+        
       } catch (error) {
         console.error(`Failed to delete widget ${widgetId} on server`, error);
         // Rollback on error
         set({ pages: originalPages });
+        throw error; // Re-throw to handle in UI if needed
       }
     },
 
@@ -360,26 +376,47 @@ export const useDashboardStore = create<DashboardState>()(
       
       try {
         await saveWidgets(widgetStates);
+        console.log("[Dashboard] State saved to server successfully");
+        
+        // 저장 성공 시 해시 업데이트
+        const currentHash = generateStateHash(activePage.widgets, activePage.layouts);
+        set({ lastSavedHash: currentHash });
+        
+        // localStorage 백업 제거 - 서버 데이터만 신뢰하여 일관성 보장
+        
       } catch (err) {
-        console.error("Failed to save state to server:", err);
-        // 서버 저장 실패시 localStorage에 폴백
-        try {
-          localStorage.setItem('hwnow_dashboard_backup', JSON.stringify({
-            pages: get().pages,
-            activePageIndex: get().activePageIndex
-          }));
-          console.log("State saved to localStorage as fallback");
-        } catch (localErr) {
-          console.error("Failed to save to localStorage:", localErr);
-        }
+        console.error("[Dashboard] Failed to save state to server:", err);
         throw err;
       }
     },
 
     saveState: debounce(() => {
-      const userId = getUserId();
-      const { pages, activePageIndex } = get();
+      const { pages, activePageIndex, lastSavedHash, isAutosaving } = get();
       const activePage = pages[activePageIndex];
+      const userId = getUserId();
+
+      // 현재 상태 해시 계산
+      const currentHash = generateStateHash(activePage.widgets, activePage.layouts);
+      
+      // 상태가 변경되지 않았으면 저장하지 않음
+      if (currentHash === lastSavedHash) {
+        console.log("[Dashboard] saveState: No changes detected, skipping save");
+        return;
+      }
+      
+      // 이미 자동 저장 중이면 건너뛰기
+      if (isAutosaving) {
+        console.log("[Dashboard] saveState: Already autosaving, skipping duplicate save");
+        return;
+      }
+      
+      console.log("[Dashboard] saveState: State changed, proceeding with save", {
+        widgetCount: activePage.widgets.length,
+        previousHash: lastSavedHash?.substring(0, 8),
+        currentHash: currentHash.substring(0, 8)
+      });
+
+      set({ isAutosaving: true });
 
       const widgetStates: WidgetState[] = activePage.widgets.map(widget => {
         const layout = activePage.layouts.find(l => l.i === widget.i);
@@ -398,24 +435,27 @@ export const useDashboardStore = create<DashboardState>()(
         };
       });
       
-      saveWidgets(widgetStates).catch(err => {
-        console.error("Failed to save state to server:", err);
-        // 서버 저장 실패시 localStorage에 폴백
-        try {
-          localStorage.setItem('hwnow_dashboard_backup', JSON.stringify({
-            pages: get().pages,
-            activePageIndex: get().activePageIndex
-          }));
-          console.log("State saved to localStorage as fallback");
-        } catch (localErr) {
-          console.error("Failed to save to localStorage:", localErr);
-        }
-      });
+      saveWidgets(widgetStates)
+        .then(() => {
+          console.log("[Dashboard] saveState: Successfully saved state to server");
+          set({ lastSavedHash: currentHash, isAutosaving: false });
+        })
+        .catch(err => {
+          console.error("[Dashboard] Failed to save state to server:", err);
+          set({ isAutosaving: false });
+          // localStorage 폴백 제거 - 서버 저장 실패 시 에러로 처리
+        });
     }, 1500), // 1.5초 디바운스
 
     resetState: () => {
       // 서버의 데이터도 삭제하는 로직이 필요할 수 있지만, 여기서는 프론트엔드 초기화만 진행
-      set({ pages: [defaultPage], activePageIndex: 0, isInitialized: false });
+      set({ 
+        pages: [defaultPage], 
+        activePageIndex: 0, 
+        isInitialized: false,
+        lastSavedHash: null,
+        isAutosaving: false
+      });
       get().actions.initialize();
     },
   },
