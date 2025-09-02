@@ -150,9 +150,9 @@ if not exist "frontend\node_modules" (
     cd ..
 )
 
-:: Build and run with Wails
-echo [INFO] Starting Wails development build...
-wails build
+:: Build and run with Wails using legacy WebView2 loader for compatibility
+echo [INFO] Starting Wails development build with legacy WebView2 loader...
+wails build -tags native_webview2loader
 if errorlevel 1 (
     echo [ERROR] Failed to build Wails application.
     cd ..\..
@@ -196,9 +196,9 @@ if not exist "frontend\node_modules" (
     cd ..
 )
 
-:: Build production version
-echo [INFO] Building production executable...
-wails build -clean
+:: Build production version with legacy WebView2 loader for compatibility
+echo [INFO] Building production executable with legacy WebView2 loader...
+wails build -clean -tags native_webview2loader
 if errorlevel 1 (
     echo [ERROR] Failed to build production executable.
     cd ..\..
@@ -244,17 +244,18 @@ if not exist "frontend\node_modules" (
     cd ..
 )
 
-:: Run development server with live reload
-echo [INFO] Starting Wails development server with live reload...
+:: Run development server with live reload using legacy WebView2 loader
+echo [INFO] Starting Wails development server with live reload and legacy WebView2 loader...
 echo.
 echo ===================================================================
 echo      HWnow Development Server
 echo      The application will open automatically
 echo      Changes will be automatically reloaded
+echo      Using legacy WebView2 loader for compatibility
 echo      Press Ctrl+C to stop
 echo ===================================================================
 
-wails dev
+wails dev -tags native_webview2loader
 if errorlevel 1 (
     echo [ERROR] Failed to start development server.
 )

@@ -165,6 +165,10 @@ var (
 // wsChan: WebSocket으로 실시간 전송하기 위한 채널
 // dbChan: DB에 로그를 기록하기 위한 채널
 func Start(wsChan chan<- *ResourceSnapshot, dbChan chan<- *ResourceSnapshot) {
+	log.Printf("[SYSTEM_STARTUP] Starting system resource monitoring collector...")
+	log.Printf("[SYSTEM_STARTUP] Data collection interval: 2 seconds")
+	log.Printf("[SYSTEM_STARTUP] Operating System: %s", runtime.GOOS)
+	
 	ticker := time.NewTicker(2 * time.Second) // 2초마다 데이터 수집
 	defer ticker.Stop()
 
@@ -186,6 +190,8 @@ func Start(wsChan chan<- *ResourceSnapshot, dbChan chan<- *ResourceSnapshot) {
 		now := time.Now()
 		duration := now.Sub(lastSampleTime).Seconds()
 		lastSampleTime = now
+		
+		log.Printf("[DATA_COLLECTION] Starting data collection cycle #%d at %s", cpuInfoCounter+1, now.Format("15:04:05"))
 
 		var metrics []Metric
 
@@ -265,41 +271,64 @@ func Start(wsChan chan<- *ResourceSnapshot, dbChan chan<- *ResourceSnapshot) {
 			}
 		}
 
-		// System Uptime
+		// System Uptime - 상세 에러 로깅 추가
 		uptime, err := getSystemUptime()
 		if err != nil {
-			log.Printf("Error getting system uptime: %v", err)
+			log.Printf("[DETAILED_ERROR] System uptime collection failed - Error: %v, Type: %T", err, err)
+			log.Printf("[DETAILED_ERROR] gopsutil host.Uptime() failure - attempting alternative methods")
+			metrics = append(metrics, Metric{Type: "system_uptime", Value: 0.0})
 		} else {
+			log.Printf("[SUCCESS] System uptime: %.0f seconds (%.1f hours)", uptime, uptime/3600)
 			metrics = append(metrics, Metric{Type: "system_uptime", Value: uptime})
 		}
 
-		// Disk Space
+		// Disk Space - 상세 에러 로깅 추가
 		diskUsage, err := getDiskUsage()
 		if err != nil {
-			log.Printf("Error getting disk usage: %v", err)
+			log.Printf("[DETAILED_ERROR] Disk usage collection failed - Error: %v, Type: %T", err, err)
+			log.Printf("[DETAILED_ERROR] gopsutil disk.Usage() failure - checking path and permissions")
+			log.Printf("[DETAILED_ERROR] Current OS: %s, Attempted disk path: %s", runtime.GOOS, getDiskPath())
+			// 디스크 정보를 가져올 수 없어도 기본값을 전송하여 위젯이 상태를 알 수 있도록 함
+			metrics = append(metrics, Metric{Type: "disk_total", Value: 0.0})
+			metrics = append(metrics, Metric{Type: "disk_used", Value: 0.0})
+			metrics = append(metrics, Metric{Type: "disk_free", Value: 0.0})
+			metrics = append(metrics, Metric{Type: "disk_usage_percent", Value: 0.0})
 		} else {
+			log.Printf("[SUCCESS] Disk usage - Total: %.2f GB, Used: %.2f GB (%.1f%%)", 
+				diskUsage.Total/1024/1024/1024, diskUsage.Used/1024/1024/1024, diskUsage.UsedPercent)
 			metrics = append(metrics, Metric{Type: "disk_total", Value: diskUsage.Total})
 			metrics = append(metrics, Metric{Type: "disk_used", Value: diskUsage.Used})
 			metrics = append(metrics, Metric{Type: "disk_free", Value: diskUsage.Free})
 			metrics = append(metrics, Metric{Type: "disk_usage_percent", Value: diskUsage.UsedPercent})
 		}
 
-		// Memory Details
+		// Memory Details - 상세 에러 로깅 추가
 		memDetails, err := getMemoryDetails()
 		if err != nil {
-			log.Printf("Error getting memory details: %v", err)
+			log.Printf("[DETAILED_ERROR] Memory details collection failed - Error: %v, Type: %T", err, err)
+			log.Printf("[DETAILED_ERROR] gopsutil mem.VirtualMemory()/mem.SwapMemory() failure")
+			metrics = append(metrics, Metric{Type: "memory_physical", Value: 0.0})
+			metrics = append(metrics, Metric{Type: "memory_virtual", Value: 0.0})
+			metrics = append(metrics, Metric{Type: "memory_swap", Value: 0.0})
 		} else {
+			log.Printf("[SUCCESS] Memory details - Physical: %.1f%%, Virtual: %.1f%%, Swap: %.1f%%", 
+				memDetails.Physical, memDetails.Virtual, memDetails.Swap)
 			metrics = append(metrics, Metric{Type: "memory_physical", Value: memDetails.Physical})
 			metrics = append(metrics, Metric{Type: "memory_virtual", Value: memDetails.Virtual})
 			metrics = append(metrics, Metric{Type: "memory_swap", Value: memDetails.Swap})
 		}
 
-		// Network Status
+		// Network Status - 상세 에러 로깅 추가
 		netStatus, err := getNetworkStatus()
 		if err != nil {
-			log.Printf("Error getting network status: %v", err)
+			log.Printf("[DETAILED_ERROR] Network status collection failed - Error: %v, Type: %T", err, err)
+			log.Printf("[DETAILED_ERROR] gopsutil net.Interfaces() failure - checking network access")
+			// 기본 네트워크 인터페이스 상태를 전송 (연결되지 않음으로 표시)
+			metrics = append(metrics, Metric{Type: "network_unknown_status", Value: 0.0, Info: "N/A"})
 		} else {
+			log.Printf("[SUCCESS] Network status - Found %d network interfaces", len(netStatus))
 			for _, nic := range netStatus {
+				log.Printf("[SUCCESS] Network interface %s: status=%.0f, ip=%s", nic.Name, nic.Status, nic.IpAddress)
 				metrics = append(metrics, Metric{Type: fmt.Sprintf("network_%s_status", nic.Name), Value: nic.Status, Info: nic.IpAddress})
 			}
 		}
@@ -334,21 +363,47 @@ func Start(wsChan chan<- *ResourceSnapshot, dbChan chan<- *ResourceSnapshot) {
 			}
 		}
 
-		// Battery Status (if available)
+		// Battery Status - 에러가 있어도 기본값 전송
 		if runtime.GOOS == "windows" || runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
 			batteryStatus, err := getBatteryStatus()
-			if err == nil {
+			if err != nil {
+				log.Printf("Error getting battery status: %v", err)
+				// 배터리가 없거나 에러 상황에서도 기본값 전송
+				metrics = append(metrics, Metric{Type: "battery_percent", Value: -1.0}) // -1은 배터리 없음을 의미
+				metrics = append(metrics, Metric{Type: "battery_plugged", Value: 0.0})
+			} else {
 				metrics = append(metrics, Metric{Type: "battery_percent", Value: batteryStatus.Percent})
 				metrics = append(metrics, Metric{Type: "battery_plugged", Value: batteryStatus.Plugged})
 			}
 		}
 
-		// GPU Monitoring
+		// GPU Monitoring - 상세 에러 로깅 추가
 		gpuInfo, err := getGPUInfo()
 		if err != nil {
-			log.Printf("Error getting GPU info: %v", err)
+			log.Printf("[DETAILED_ERROR] GPU info collection failed - Error: %v, Type: %T", err, err)
+			log.Printf("[DETAILED_ERROR] Current OS: %s - checking nvidia-smi, WMI, and other GPU APIs", runtime.GOOS)
+			log.Printf("[DETAILED_ERROR] Attempting to identify GPU detection failure reasons...")
+			
+			// GPU 감지 시도 및 결과 로깅
+			if runtime.GOOS == "windows" {
+				log.Printf("[DETAILED_ERROR] Windows GPU detection - nvidia-smi available: %v", isNVIDIASMIAvailable())
+				log.Printf("[DETAILED_ERROR] Windows GPU detection - WMI accessible: %v", isWMIAccessible())
+			}
+			
+			// GPU가 없거나 에러 상황에서도 기본값을 전송하여 프론트엔드가 상태를 알 수 있도록 함
+			metrics = append(metrics, Metric{Type: "gpu_usage", Value: 0.0})
+			metrics = append(metrics, Metric{Type: "gpu_memory_used", Value: 0.0})
+			metrics = append(metrics, Metric{Type: "gpu_memory_total", Value: 0.0})
+			metrics = append(metrics, Metric{Type: "gpu_temperature", Value: 0.0})
+			metrics = append(metrics, Metric{Type: "gpu_power", Value: 0.0})
+			
+			// GPU 정보도 "No GPU" 상태로 전송
+			if shouldSendCpuInfo {
+				log.Printf("[DETAILED_ERROR] Sending GPU info: No GPU detected")
+				metrics = append(metrics, Metric{Type: "gpu_info", Value: 0.0, Info: "No GPU Detected"})
+			}
 		} else {
-			log.Printf("GPU metrics - Usage: %.1f%%, Memory: %.0f/%.0fMB, Temp: %.1f°C, Power: %.1fW", 
+			log.Printf("[SUCCESS] GPU metrics - Usage: %.1f%%, Memory: %.0f/%.0fMB, Temp: %.1f°C, Power: %.1fW", 
 				gpuInfo.Usage, gpuInfo.MemoryUsed, gpuInfo.MemoryTotal, gpuInfo.Temperature, gpuInfo.Power)
 			metrics = append(metrics, Metric{Type: "gpu_usage", Value: gpuInfo.Usage})
 			metrics = append(metrics, Metric{Type: "gpu_memory_used", Value: gpuInfo.MemoryUsed})
@@ -358,7 +413,7 @@ func Start(wsChan chan<- *ResourceSnapshot, dbChan chan<- *ResourceSnapshot) {
 			
 			// GPU 정보 (모델명 등)는 처음에만 또는 주기적으로 전송
 			if shouldSendCpuInfo {
-				log.Printf("Sending GPU info: %s", gpuInfo.Name)
+				log.Printf("[SUCCESS] Sending GPU info: %s", gpuInfo.Name)
 				metrics = append(metrics, Metric{Type: "gpu_info", Value: 1.0, Info: gpuInfo.Name})
 			}
 		}
@@ -514,12 +569,31 @@ func getSystemUptime() (float64, error) {
 	return float64(uptime), nil
 }
 
+// getDiskPath returns the disk path for the current OS
+func getDiskPath() string {
+	if runtime.GOOS == "windows" {
+		return "C:\\"
+	}
+	return "/"
+}
+
+// isNVIDIASMIAvailable checks if nvidia-smi command is available
+func isNVIDIASMIAvailable() bool {
+	cmd := createHiddenCommand("nvidia-smi", "--version")
+	err := cmd.Run()
+	return err == nil
+}
+
+// isWMIAccessible checks if WMI queries are accessible
+func isWMIAccessible() bool {
+	cmd := createHiddenCommand("wmic", "computersystem", "get", "model", "/format:csv")
+	err := cmd.Run()
+	return err == nil
+}
+
 func getDiskUsage() (*DiskUsageInfo, error) {
 	// Windows의 경우 C:\ 드라이브 사용, Unix/Linux의 경우 / 사용
-	path := "/"
-	if runtime.GOOS == "windows" {
-		path = "C:\\"
-	}
+	path := getDiskPath()
 	
 	usage, err := disk.Usage(path)
 	if err != nil {
@@ -573,26 +647,38 @@ func getNetworkStatus() ([]NetworkInterface, error) {
 	
 	var result []NetworkInterface
 	for _, iface := range interfaces {
-		// 루프백 인터페이스는 제외
-		if iface.Name == "lo" || iface.Name == "Loopback" {
+		// 루프백 인터페이스와 가상 인터페이스는 제외
+		if strings.Contains(strings.ToLower(iface.Name), "loopback") || 
+		   strings.Contains(strings.ToLower(iface.Name), "lo") ||
+		   strings.Contains(strings.ToLower(iface.Name), "virtual") {
 			continue
 		}
 		
 		status := 0.0
-		// 플래그 확인: UP 상태인지 확인
-		for _, flag := range iface.Flags {
-			if flag == "up" {
-				status = 1.0
-				break
-			}
+		// gopsutil의 InterfaceStat 구조체 확인 - Flags는 보통 문자열 슬라이스가 아닙니다
+		// 대신 인터페이스가 활성 상태인지 다른 방법으로 확인
+		if len(iface.Addrs) > 0 {
+			// IP 주소가 있으면 활성 상태로 간주
+			status = 1.0
 		}
 		
 		ipAddr := ""
 		if len(iface.Addrs) > 0 {
-			ipAddr = iface.Addrs[0].Addr
+			// 첫 번째 주소 사용, IPv4 우선
+			for _, addr := range iface.Addrs {
+				if strings.Contains(addr.Addr, ".") { // IPv4 주소인 경우
+					ipAddr = addr.Addr
+					break
+				}
+			}
+			// IPv4가 없으면 첫 번째 주소 사용
+			if ipAddr == "" && len(iface.Addrs) > 0 {
+				ipAddr = iface.Addrs[0].Addr
+			}
 		}
 		
-		log.Printf("Network interface %s: status=%.0f, ip=%s", iface.Name, status, ipAddr)
+		log.Printf("Network interface %s: status=%.0f, ip=%s, addr_count=%d", 
+			iface.Name, status, ipAddr, len(iface.Addrs))
 		
 		result = append(result, NetworkInterface{
 			Name:      iface.Name,
