@@ -49,6 +49,97 @@
   padding: 0;
 }
 
+/* Loading 상태 스타일 */
+.widget-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  color: var(--color-text-secondary);
+  padding: var(--spacing-xl);
+}
+
+.widget-loading-spinner {
+  margin-bottom: var(--spacing-md);
+  animation: spin 1s linear infinite;
+}
+
+.widget-loading-spinner svg {
+  width: 32px;
+  height: 32px;
+  color: var(--color-primary);
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.widget-loading-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.widget-loading-title {
+  font-size: 1.0em;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.widget-loading-subtitle {
+  font-size: 0.85em;
+  opacity: 0.8;
+}
+
+/* No Data 상태 스타일 */
+.widget-no-data {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  color: var(--color-text-secondary);
+  padding: var(--spacing-xl);
+  min-height: 150px; /* 최소 높이 보장 */
+}
+
+.widget-no-data-icon {
+  opacity: 0.5;
+  margin-bottom: var(--spacing-md);
+}
+
+.widget-no-data-icon svg {
+  width: 48px;
+  height: 48px;
+}
+
+.widget-no-data-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.widget-no-data-title {
+  font-size: 1.1em;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.widget-no-data-subtitle {
+  font-size: 0.9em;
+  opacity: 0.8;
+  color: var(--color-text-secondary);
+}
+
 .widget-content.chart-only-mode .widget-chart {
   height: 100%;
   flex: 1;
