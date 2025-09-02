@@ -1,10 +1,10 @@
-import { memo, useState } from 'react';
+import { memo, useState, useEffect } from 'react';
 import { ResponsiveContainer, AreaChart, LineChart, BarChart, XAxis, YAxis, Tooltip, Area, Line, Bar } from 'recharts';
 import { useSystemResourceStore } from '../../stores/systemResourceStore';
 import { useDashboardStore } from '../../stores/dashboardStore';
 import { SettingsModal } from '../common/SettingsModal';
 import { NetworkSettings } from './settings/NetworkSettings';
-import { formatBytes } from '../../utils/formatters';
+import { formatSpeed } from '../../utils/formatters';
 import './widget.css';
 
 interface WidgetProps {
@@ -16,8 +16,25 @@ interface WidgetProps {
 
 const NetworkWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = false, onExpand }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const netSentData = useSystemResourceStore((state) => state.data.net_sent);
   const netRecvData = useSystemResourceStore((state) => state.data.net_recv);
+
+  // 데이터 로딩 상태 관리
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 3000); // 3초 후 로딩 상태 해제
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  // 데이터 수신 시 로딩 상태 해제
+  useEffect(() => {
+    if (netSentData.length > 0 || netRecvData.length > 0) {
+      setIsLoading(false);
+    }
+  }, [netSentData, netRecvData]);
   
   const widget = useDashboardStore((state) => {
     const page = state.pages[state.activePageIndex];
@@ -27,6 +44,9 @@ const NetworkWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded =
   const config = widget?.config || {};
   const latestSent = netSentData.length > 0 ? netSentData[netSentData.length - 1] : 0;
   const latestRecv = netRecvData.length > 0 ? netRecvData[netRecvData.length - 1] : 0;
+
+  // 데이터 가용성 확인
+  const hasNetworkData = netSentData.length > 0 || netRecvData.length > 0;
 
   // 설정된 데이터 포인트 수만큼만 표시
   const dataPoints = config.dataPoints || 50;
@@ -118,104 +138,128 @@ const NetworkWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded =
         </div>
         
         <div className="widget-content">
-          <div className="widget-info" role="status" aria-live="polite" aria-atomic="true">
-            {showSentSpeed && (
-              <div className="widget-info-item">
-                <span className="widget-info-label">Sent:</span>
-                <span className="widget-info-value" aria-label={`Data sent speed is ${formatSpeed(latestSent)}`}>
-                  {formatSpeed(latestSent)}
-                </span>
+          {isLoading ? (
+            <div className="widget-loading">
+              <div className="widget-loading-spinner">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                </svg>
               </div>
-            )}
-            {showRecvSpeed && (
-              <div className="widget-info-item">
-                <span className="widget-info-label">Received:</span>
-                <span className="widget-info-value" aria-label={`Data received speed is ${formatSpeed(latestRecv)}`}>
-                  {formatSpeed(latestRecv)}
-                </span>
+              <div className="widget-loading-text">Loading network I/O data...</div>
+            </div>
+          ) : !hasNetworkData ? (
+            <div className="widget-no-data">
+              <div className="widget-no-data-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
               </div>
-            )}
-            {showTotalSent && (
-              <div className="widget-info-item">
-                <span className="widget-info-label">Total Sent:</span>
-                <span className="widget-info-value">{formatBytes(latestSent * 3600)}</span>
+              <div className="widget-no-data-message">No network I/O data available</div>
+              <div className="widget-no-data-subtitle">Network monitoring may not be supported or enabled</div>
+            </div>
+          ) : (
+            <>
+              <div className="widget-info" role="status" aria-live="polite" aria-atomic="true">
+                {showSentSpeed && (
+                  <div className="widget-info-item">
+                    <span className="widget-info-label">Sent:</span>
+                    <span className="widget-info-value" aria-label={`Data sent speed is ${formatSpeed(latestSent)}`}>
+                      {formatSpeed(latestSent)}
+                    </span>
+                  </div>
+                )}
+                {showRecvSpeed && (
+                  <div className="widget-info-item">
+                    <span className="widget-info-label">Received:</span>
+                    <span className="widget-info-value" aria-label={`Data received speed is ${formatSpeed(latestRecv)}`}>
+                      {formatSpeed(latestRecv)}
+                    </span>
+                  </div>
+                )}
+                {showTotalSent && (
+                  <div className="widget-info-item">
+                    <span className="widget-info-label">Total Sent:</span>
+                    <span className="widget-info-value">{formatSpeed(latestSent * 3600)}</span>
+                  </div>
+                )}
+                {showTotalRecv && (
+                  <div className="widget-info-item">
+                    <span className="widget-info-label">Total Recv:</span>
+                    <span className="widget-info-value">{formatSpeed(latestRecv * 3600)}</span>
+                  </div>
+                )}
               </div>
-            )}
-            {showTotalRecv && (
-              <div className="widget-info-item">
-                <span className="widget-info-label">Total Recv:</span>
-                <span className="widget-info-value">{formatBytes(latestRecv * 3600)}</span>
+              
+              {showGraph && (
+                <div className="widget-chart" role="img" aria-label="Network I/O trend chart">
+                  <ResponsiveContainer width="100%" height="100%">
+                  {config.chartType === 'line' ? (
+                    <LineChart data={chartData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+                      <XAxis dataKey="time" hide />
+                      <YAxis tickFormatter={(val) => formatSpeed(val)} tick={{ fill: 'var(--color-text-secondary)', fontSize: '0.75rem' }} />
+                      <Tooltip
+                        formatter={(value: number) => [formatSpeed(value), 'Speed']}
+                        labelFormatter={() => ''}
+                        contentStyle={{ 
+                          backgroundColor: 'var(--color-surface)', 
+                          border: '1px solid var(--color-border)',
+                          borderRadius: 'var(--radius-sm)',
+                          color: 'var(--color-text-primary)'
+                        }}
+                      />
+                      <Line type="monotone" dataKey="sent" stroke={config.color || "var(--color-info)"} strokeWidth={2} dot={false} name="Sent" />
+                      <Line type="monotone" dataKey="received" stroke="var(--color-success)" strokeWidth={2} dot={false} name="Received" />
+                    </LineChart>
+                  ) : config.chartType === 'bar' ? (
+                    <BarChart data={chartData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+                      <XAxis dataKey="time" hide />
+                      <YAxis tickFormatter={(val) => formatSpeed(val)} tick={{ fill: 'var(--color-text-secondary)', fontSize: '0.75rem' }} />
+                      <Tooltip
+                        formatter={(value: number) => [formatSpeed(value), 'Speed']}
+                        labelFormatter={() => ''}
+                        contentStyle={{ 
+                          backgroundColor: 'var(--color-surface)', 
+                          border: '1px solid var(--color-border)',
+                          borderRadius: 'var(--radius-sm)',
+                          color: 'var(--color-text-primary)'
+                        }}
+                      />
+                      <Bar dataKey="sent" fill={config.color || "var(--color-info)"} name="Sent" />
+                      <Bar dataKey="received" fill="var(--color-success)" name="Received" />
+                    </BarChart>
+                  ) : (
+                    <AreaChart data={chartData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id={`netSentGradient-${widgetId}`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor={config.color || "var(--color-info)"} stopOpacity={0.8}/>
+                          <stop offset="95%" stopColor={config.color || "var(--color-info)"} stopOpacity={0.1}/>
+                        </linearGradient>
+                        <linearGradient id={`netRecvGradient-${widgetId}`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="var(--color-success)" stopOpacity={0.8}/>
+                          <stop offset="95%" stopColor="var(--color-success)" stopOpacity={0.1}/>
+                        </linearGradient>
+                      </defs>
+                      <XAxis dataKey="time" hide />
+                      <YAxis tickFormatter={(val) => formatSpeed(val)} tick={{ fill: 'var(--color-text-secondary)', fontSize: '0.75rem' }} />
+                      <Tooltip
+                        formatter={(value: number) => [formatSpeed(value), 'Speed']}
+                        labelFormatter={() => ''}
+                        contentStyle={{ 
+                          backgroundColor: 'var(--color-surface)', 
+                          border: '1px solid var(--color-border)',
+                          borderRadius: 'var(--radius-sm)',
+                          color: 'var(--color-text-primary)'
+                        }}
+                      />
+                      <Area type="monotone" dataKey="sent" stroke={config.color || "var(--color-info)"} fill={`url(#netSentGradient-${widgetId})`} name="Sent" />
+                      <Area type="monotone" dataKey="received" stroke="var(--color-success)" fill={`url(#netRecvGradient-${widgetId})`} name="Received" />
+                    </AreaChart>
+                  )}
+                </ResponsiveContainer>
               </div>
-            )}
-          </div>
-          
-          {showGraph && (
-            <div className="widget-chart" role="img" aria-label="Network I/O trend chart">
-              <ResponsiveContainer width="100%" height="100%">
-              {config.chartType === 'line' ? (
-                <LineChart data={chartData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
-                  <XAxis dataKey="time" hide />
-                  <YAxis tickFormatter={(val) => formatBytes(val)} tick={{ fill: 'var(--color-text-secondary)', fontSize: '0.75rem' }} />
-                  <Tooltip
-                    formatter={(value: number) => [formatBytes(value), 'Speed']}
-                    labelFormatter={() => ''}
-                    contentStyle={{ 
-                      backgroundColor: 'var(--color-surface)', 
-                      border: '1px solid var(--color-border)',
-                      borderRadius: 'var(--radius-sm)',
-                      color: 'var(--color-text-primary)'
-                    }}
-                  />
-                  <Line type="monotone" dataKey="sent" stroke={config.color || "var(--color-info)"} strokeWidth={2} dot={false} name="Sent" />
-                  <Line type="monotone" dataKey="received" stroke="var(--color-success)" strokeWidth={2} dot={false} name="Received" />
-                </LineChart>
-              ) : config.chartType === 'bar' ? (
-                <BarChart data={chartData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
-                  <XAxis dataKey="time" hide />
-                  <YAxis tickFormatter={(val) => formatBytes(val)} tick={{ fill: 'var(--color-text-secondary)', fontSize: '0.75rem' }} />
-                  <Tooltip
-                    formatter={(value: number) => [formatBytes(value), 'Speed']}
-                    labelFormatter={() => ''}
-                    contentStyle={{ 
-                      backgroundColor: 'var(--color-surface)', 
-                      border: '1px solid var(--color-border)',
-                      borderRadius: 'var(--radius-sm)',
-                      color: 'var(--color-text-primary)'
-                    }}
-                  />
-                  <Bar dataKey="sent" fill={config.color || "var(--color-info)"} name="Sent" />
-                  <Bar dataKey="received" fill="var(--color-success)" name="Received" />
-                </BarChart>
-              ) : (
-                <AreaChart data={chartData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id={`netSentGradient-${widgetId}`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={config.color || "var(--color-info)"} stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor={config.color || "var(--color-info)"} stopOpacity={0.1}/>
-                    </linearGradient>
-                    <linearGradient id={`netRecvGradient-${widgetId}`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--color-success)" stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor="var(--color-success)" stopOpacity={0.1}/>
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="time" hide />
-                  <YAxis tickFormatter={(val) => formatBytes(val)} tick={{ fill: 'var(--color-text-secondary)', fontSize: '0.75rem' }} />
-                  <Tooltip
-                    formatter={(value: number) => [formatBytes(value), 'Speed']}
-                    labelFormatter={() => ''}
-                    contentStyle={{ 
-                      backgroundColor: 'var(--color-surface)', 
-                      border: '1px solid var(--color-border)',
-                      borderRadius: 'var(--radius-sm)',
-                      color: 'var(--color-text-primary)'
-                    }}
-                  />
-                  <Area type="monotone" dataKey="sent" stroke={config.color || "var(--color-info)"} fill={`url(#netSentGradient-${widgetId})`} name="Sent" />
-                  <Area type="monotone" dataKey="received" stroke="var(--color-success)" fill={`url(#netRecvGradient-${widgetId})`} name="Received" />
-                </AreaChart>
               )}
-            </ResponsiveContainer>
-          </div>
+            </>
           )}
         </div>
       </div>

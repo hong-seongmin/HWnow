@@ -1,10 +1,10 @@
-import { memo, useState } from 'react';
+import { memo, useState, useEffect } from 'react';
 import { ResponsiveContainer, AreaChart, LineChart, BarChart, XAxis, YAxis, Tooltip, Area, Line, Bar } from 'recharts';
 import { useSystemResourceStore } from '../../stores/systemResourceStore';
 import { useDashboardStore } from '../../stores/dashboardStore';
 import { SettingsModal } from '../common/SettingsModal';
 import { DiskSettings } from './settings/DiskSettings';
-import { formatBytes } from '../../utils/formatters';
+import { formatSpeed } from '../../utils/formatters';
 import './widget.css';
 
 interface WidgetProps {
@@ -16,8 +16,25 @@ interface WidgetProps {
 
 const DiskWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = false, onExpand }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const diskReadData = useSystemResourceStore((state) => state.data.disk_read);
   const diskWriteData = useSystemResourceStore((state) => state.data.disk_write);
+
+  // 데이터 로딩 상태 관리
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 3000); // 3초 후 로딩 상태 해제
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  // 데이터 수신 시 로딩 상태 해제
+  useEffect(() => {
+    if (diskReadData.length > 0 || diskWriteData.length > 0) {
+      setIsLoading(false);
+    }
+  }, [diskReadData, diskWriteData]);
 
   const widget = useDashboardStore((state) => {
     const page = state.pages[state.activePageIndex];
@@ -27,6 +44,9 @@ const DiskWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = fa
   const config = widget?.config || {};
   const latestRead = diskReadData.length > 0 ? diskReadData[diskReadData.length - 1] : 0;
   const latestWrite = diskWriteData.length > 0 ? diskWriteData[diskWriteData.length - 1] : 0;
+
+  // 데이터 가용성 확인
+  const hasDiskData = diskReadData.length > 0 || diskWriteData.length > 0;
 
   // 설정된 데이터 포인트 수만큼만 표시
   const dataPoints = config.dataPoints || 50;
@@ -117,106 +137,130 @@ const DiskWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = fa
         </div>
         
         <div className={`widget-content ${chartOnlyMode ? 'chart-only-mode' : ''}`}>
-          {!chartOnlyMode && (
-            <div className="widget-info" role="status" aria-live="polite" aria-atomic="true">
-            {showReadSpeed && (
-              <div className="widget-info-item">
-                <span className="widget-info-label">Read:</span>
-                <span className="widget-info-value" aria-label={`Disk read speed is ${formatSpeed(latestRead)}`}>
-                  {formatSpeed(latestRead)}
-                </span>
+          {isLoading ? (
+            <div className="widget-loading">
+              <div className="widget-loading-spinner">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                </svg>
               </div>
-            )}
-            {showWriteSpeed && (
-              <div className="widget-info-item">
-                <span className="widget-info-label">Write:</span>
-                <span className="widget-info-value" aria-label={`Disk write speed is ${formatSpeed(latestWrite)}`}>
-                  {formatSpeed(latestWrite)}
-                </span>
+              <div className="widget-loading-text">Loading disk I/O data...</div>
+            </div>
+          ) : !hasDiskData ? (
+            <div className="widget-no-data">
+              <div className="widget-no-data-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M22 12H2M22 12a10 10 0 11-20 0 10 10 0 0120 0z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
               </div>
-            )}
-            {showTotalSpace && (
-              <div className="widget-info-item">
-                <span className="widget-info-label">Total:</span>
-                <span className="widget-info-value">500 GB</span>
+              <div className="widget-no-data-message">No disk I/O data available</div>
+              <div className="widget-no-data-subtitle">Disk monitoring may not be supported or enabled</div>
+            </div>
+          ) : (
+            <>
+              {!chartOnlyMode && (
+                <div className="widget-info" role="status" aria-live="polite" aria-atomic="true">
+                {showReadSpeed && (
+                  <div className="widget-info-item">
+                    <span className="widget-info-label">Read:</span>
+                    <span className="widget-info-value" aria-label={`Disk read speed is ${formatSpeed(latestRead)}`}>
+                      {formatSpeed(latestRead)}
+                    </span>
+                  </div>
+                )}
+                {showWriteSpeed && (
+                  <div className="widget-info-item">
+                    <span className="widget-info-label">Write:</span>
+                    <span className="widget-info-value" aria-label={`Disk write speed is ${formatSpeed(latestWrite)}`}>
+                      {formatSpeed(latestWrite)}
+                    </span>
+                  </div>
+                )}
+                {showTotalSpace && (
+                  <div className="widget-info-item">
+                    <span className="widget-info-label">Total:</span>
+                    <span className="widget-info-value">500 GB</span>
+                  </div>
+                )}
+                {showFreeSpace && (
+                  <div className="widget-info-item">
+                    <span className="widget-info-label">Free:</span>
+                    <span className="widget-info-value">250 GB</span>
+                  </div>
+                )}
               </div>
-            )}
-            {showFreeSpace && (
-              <div className="widget-info-item">
-                <span className="widget-info-label">Free:</span>
-                <span className="widget-info-value">250 GB</span>
-              </div>
-            )}
-          </div>
-          )}
-          
-          {showGraph && (
-            <div className="widget-chart" role="img" aria-label="Disk I/O trend chart">
-              <ResponsiveContainer width="100%" height="100%">
-              {config.chartType === 'line' ? (
-                <LineChart data={chartData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
-                  <XAxis dataKey="time" hide />
-                  <YAxis tickFormatter={(val) => formatBytes(val)} tick={{ fill: 'var(--color-text-secondary)', fontSize: '0.75rem' }} />
-                  <Tooltip
-                    formatter={(value: number) => [formatBytes(value), 'Speed']}
-                    labelFormatter={() => ''}
-                    contentStyle={{ 
-                      backgroundColor: 'var(--color-surface)', 
-                      border: '1px solid var(--color-border)',
-                      borderRadius: 'var(--radius-sm)',
-                      color: 'var(--color-text-primary)'
-                    }}
-                  />
-                  <Line type="monotone" dataKey="read" stroke="var(--color-primary)" strokeWidth={2} dot={false} name="Read" />
-                  <Line type="monotone" dataKey="write" stroke="var(--color-secondary)" strokeWidth={2} dot={false} name="Write" />
-                </LineChart>
-              ) : config.chartType === 'bar' ? (
-                <BarChart data={chartData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
-                  <XAxis dataKey="time" hide />
-                  <YAxis tickFormatter={(val) => formatBytes(val)} tick={{ fill: 'var(--color-text-secondary)', fontSize: '0.75rem' }} />
-                  <Tooltip
-                    formatter={(value: number) => [formatBytes(value), 'Speed']}
-                    labelFormatter={() => ''}
-                    contentStyle={{ 
-                      backgroundColor: 'var(--color-surface)', 
-                      border: '1px solid var(--color-border)',
-                      borderRadius: 'var(--radius-sm)',
-                      color: 'var(--color-text-primary)'
-                    }}
-                  />
-                  <Bar dataKey="read" fill="var(--color-primary)" name="Read" />
-                  <Bar dataKey="write" fill="var(--color-secondary)" name="Write" />
-                </BarChart>
-              ) : (
-                <AreaChart data={chartData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="diskReadGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={config.color || "var(--color-primary)"} stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor={config.color || "var(--color-primary)"} stopOpacity={0.1}/>
-                    </linearGradient>
-                    <linearGradient id="diskWriteGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--color-secondary)" stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor="var(--color-secondary)" stopOpacity={0.1}/>
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="time" hide />
-                  <YAxis tickFormatter={(val) => formatBytes(val)} tick={{ fill: 'var(--color-text-secondary)', fontSize: '0.75rem' }} />
-                  <Tooltip
-                    formatter={(value: number) => [formatBytes(value), 'Speed']}
-                    labelFormatter={() => ''}
-                    contentStyle={{ 
-                      backgroundColor: 'var(--color-surface)', 
-                      border: '1px solid var(--color-border)',
-                      borderRadius: 'var(--radius-sm)',
-                      color: 'var(--color-text-primary)'
-                    }}
-                  />
-                  <Area type="monotone" dataKey="read" stroke={config.color || "var(--color-primary)"} fill="url(#diskReadGradient)" name="Read" />
-                  <Area type="monotone" dataKey="write" stroke="var(--color-secondary)" fill="url(#diskWriteGradient)" name="Write" />
-                </AreaChart>
               )}
-            </ResponsiveContainer>
-          </div>
+              
+              {showGraph && (
+                <div className="widget-chart" role="img" aria-label="Disk I/O trend chart">
+                  <ResponsiveContainer width="100%" height="100%">
+                  {config.chartType === 'line' ? (
+                    <LineChart data={chartData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+                      <XAxis dataKey="time" hide />
+                      <YAxis tickFormatter={(val) => formatSpeed(val)} tick={{ fill: 'var(--color-text-secondary)', fontSize: '0.75rem' }} />
+                      <Tooltip
+                        formatter={(value: number) => [formatSpeed(value), 'Speed']}
+                        labelFormatter={() => ''}
+                        contentStyle={{ 
+                          backgroundColor: 'var(--color-surface)', 
+                          border: '1px solid var(--color-border)',
+                          borderRadius: 'var(--radius-sm)',
+                          color: 'var(--color-text-primary)'
+                        }}
+                      />
+                      <Line type="monotone" dataKey="read" stroke="var(--color-primary)" strokeWidth={2} dot={false} name="Read" />
+                      <Line type="monotone" dataKey="write" stroke="var(--color-secondary)" strokeWidth={2} dot={false} name="Write" />
+                    </LineChart>
+                  ) : config.chartType === 'bar' ? (
+                    <BarChart data={chartData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+                      <XAxis dataKey="time" hide />
+                      <YAxis tickFormatter={(val) => formatSpeed(val)} tick={{ fill: 'var(--color-text-secondary)', fontSize: '0.75rem' }} />
+                      <Tooltip
+                        formatter={(value: number) => [formatSpeed(value), 'Speed']}
+                        labelFormatter={() => ''}
+                        contentStyle={{ 
+                          backgroundColor: 'var(--color-surface)', 
+                          border: '1px solid var(--color-border)',
+                          borderRadius: 'var(--radius-sm)',
+                          color: 'var(--color-text-primary)'
+                        }}
+                      />
+                      <Bar dataKey="read" fill="var(--color-primary)" name="Read" />
+                      <Bar dataKey="write" fill="var(--color-secondary)" name="Write" />
+                    </BarChart>
+                  ) : (
+                    <AreaChart data={chartData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="diskReadGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor={config.color || "var(--color-primary)"} stopOpacity={0.8}/>
+                          <stop offset="95%" stopColor={config.color || "var(--color-primary)"} stopOpacity={0.1}/>
+                        </linearGradient>
+                        <linearGradient id="diskWriteGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="var(--color-secondary)" stopOpacity={0.8}/>
+                          <stop offset="95%" stopColor="var(--color-secondary)" stopOpacity={0.1}/>
+                        </linearGradient>
+                      </defs>
+                      <XAxis dataKey="time" hide />
+                      <YAxis tickFormatter={(val) => formatSpeed(val)} tick={{ fill: 'var(--color-text-secondary)', fontSize: '0.75rem' }} />
+                      <Tooltip
+                        formatter={(value: number) => [formatSpeed(value), 'Speed']}
+                        labelFormatter={() => ''}
+                        contentStyle={{ 
+                          backgroundColor: 'var(--color-surface)', 
+                          border: '1px solid var(--color-border)',
+                          borderRadius: 'var(--radius-sm)',
+                          color: 'var(--color-text-primary)'
+                        }}
+                      />
+                      <Area type="monotone" dataKey="read" stroke={config.color || "var(--color-primary)"} fill="url(#diskReadGradient)" name="Read" />
+                      <Area type="monotone" dataKey="write" stroke="var(--color-secondary)" fill="url(#diskWriteGradient)" name="Write" />
+                    </AreaChart>
+                  )}
+                </ResponsiveContainer>
+              </div>
+              )}
+            </>
           )}
         </div>
       </div>
