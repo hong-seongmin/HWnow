@@ -122,6 +122,11 @@ export const useSystemResourceStore = create<SystemResourceState>((set) => ({
     }));
   },
   setData: (type, value, info) => {
+    // 데이터 수신 로깅 (debug mode)
+    if (type === 'disk_read' || type === 'disk_write' || type === 'net_sent' || type === 'net_recv') {
+      console.log(`[SystemResourceStore] Receiving ${type}: ${value}`, info ? `(info: ${info})` : '');
+    }
+    
     set((state) => {
       // Handle CPU info separately
       if (type === 'cpu_info' && info) {

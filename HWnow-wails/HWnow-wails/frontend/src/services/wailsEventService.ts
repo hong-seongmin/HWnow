@@ -50,6 +50,11 @@ export class WailsEventService {
   private config: EventServiceConfig;
   private connectionStatusCallbacks = new Set<ConnectionStatusCallback>();
   
+  // Widget-aware polling optimization
+  private activeWidgets: Set<WidgetType> = new Set();
+  private lastWidgetUpdate: number = 0;
+  private widgetUpdateDebounceMs: number = 1000; // Debounce widget changes by 1 second
+  
   // Performance tracking
   private performanceMetrics: PerformanceMetrics = {
     lastPollingTime: 0,
@@ -267,9 +272,11 @@ export class WailsEventService {
       
       console.log('[WailsEvents] Monitoring started successfully');
       
-      // Start polling for different data types
+      // Start comprehensive polling for all metrics 
+      // Always start all monitoring services to ensure all data is available
+      console.log('[WailsEvents] Starting comprehensive monitoring for all metrics');
       this.startSystemInfoPolling();
-      this.startRealTimeMetricsPolling();
+      this.startRealTimeMetricsPolling(); 
       this.startGPUInfoPolling();
       this.startGPUProcessPolling();
       this.startTopProcessPolling();
@@ -391,11 +398,17 @@ export class WailsEventService {
           setData('disk_usage_percent', metrics.disk_usage.usedPercent);
         }
         
-        // Update network metrics
+        // Update disk I/O speed metrics
+        setData('disk_read', metrics.disk_read_speed || 0);
+        setData('disk_write', metrics.disk_write_speed || 0);
+        
+        // Update network I/O speed metrics  
+        setData('net_sent', metrics.net_sent_speed || 0);
+        setData('net_recv', metrics.net_recv_speed || 0);
+        
+        // Update network interfaces status
         if (metrics.network_io && Array.isArray(metrics.network_io)) {
           metrics.network_io.forEach((iface, index) => {
-            setData(`network_${iface.name}_sent`, iface.bytesSent);
-            setData(`network_${iface.name}_recv`, iface.bytesRecv);
             setData(`network_${iface.name}_status`, iface.status, iface.ipAddress);
           });
         }
@@ -681,6 +694,75 @@ export class WailsEventService {
       // Restart with new interval (simplified - would need more robust implementation)
       console.log(`[WailsEvents] Adapting ${jobName} polling interval to ${newInterval}ms`);
     }
+  }
+  
+  // Widget-aware polling optimization methods
+  public updateActiveWidgets(widgets: WidgetType[]): void {
+    const newWidgets = new Set(widgets);
+    const hasChanged = widgets.length !== this.activeWidgets.size || 
+                      widgets.some(w => !this.activeWidgets.has(w));
+                      
+    if (hasChanged) {
+      console.log('[WailsEvents] Active widgets changed:', widgets);
+      this.activeWidgets = newWidgets;
+      this.lastWidgetUpdate = Date.now();
+      this.optimizePollingForWidgets();
+    }
+  }
+  
+  private optimizePollingForWidgets(): void {
+    if (!this.isRunning) return;
+    
+    console.log('[WailsEvents] Optimizing polling for active widgets:', Array.from(this.activeWidgets));
+    
+    // Clear all current polling to restart with optimized intervals
+    this.clearAllPolling();
+    
+    // Start optimized polling based on active widgets
+    this.startOptimizedPolling();
+  }
+  
+  private startOptimizedPolling(): void {
+    const needsSystemInfo = this.activeWidgets.has('system_info');
+    const needsRealTimeMetrics = this.needsRealTimeMetrics();
+    const needsGPUInfo = this.needsGPUInfo();
+    const needsGPUProcesses = this.activeWidgets.has('gpu_process');
+    const needsTopProcesses = this.activeWidgets.has('process_monitor');
+    
+    // Only start polling for data that is actually needed
+    if (needsSystemInfo) {
+      this.startSystemInfoPolling();
+    }
+    
+    if (needsRealTimeMetrics) {
+      this.startRealTimeMetricsPolling();
+    }
+    
+    if (needsGPUInfo) {
+      this.startGPUInfoPolling();
+    }
+    
+    if (needsGPUProcesses) {
+      this.startGPUProcessPolling();
+    }
+    
+    if (needsTopProcesses) {
+      this.startTopProcessPolling();
+    }
+    
+    console.log(`[WailsEvents] Started optimized polling jobs - SystemInfo:${needsSystemInfo}, RealTime:${needsRealTimeMetrics}, GPU:${needsGPUInfo}, GPUProc:${needsGPUProcesses}, TopProc:${needsTopProcesses}`);
+  }
+  
+  private needsRealTimeMetrics(): boolean {
+    return this.activeWidgets.has('cpu') || 
+           this.activeWidgets.has('ram') || 
+           this.activeWidgets.has('disk_space') ||
+           this.activeWidgets.has('network_monitor');
+  }
+  
+  private needsGPUInfo(): boolean {
+    return this.activeWidgets.has('gpu') || 
+           this.activeWidgets.has('gpu_process');
   }
   
   public updateConfig(newConfig: Partial<EventServiceConfig>): void {
