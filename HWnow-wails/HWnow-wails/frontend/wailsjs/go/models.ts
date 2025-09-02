@@ -64,7 +64,11 @@ export namespace main {
 	    cpu_usage: number;
 	    memory_usage: number;
 	    disk_usage?: monitoring.DiskUsageInfo;
+	    disk_read_speed: number;
+	    disk_write_speed: number;
 	    network_io: monitoring.NetworkInterface[];
+	    net_sent_speed: number;
+	    net_recv_speed: number;
 	    // Go type: time
 	    timestamp: any;
 	
@@ -77,7 +81,11 @@ export namespace main {
 	        this.cpu_usage = source["cpu_usage"];
 	        this.memory_usage = source["memory_usage"];
 	        this.disk_usage = this.convertValues(source["disk_usage"], monitoring.DiskUsageInfo);
+	        this.disk_read_speed = source["disk_read_speed"];
+	        this.disk_write_speed = source["disk_write_speed"];
 	        this.network_io = this.convertValues(source["network_io"], monitoring.NetworkInterface);
+	        this.net_sent_speed = source["net_sent_speed"];
+	        this.net_recv_speed = source["net_recv_speed"];
 	        this.timestamp = this.convertValues(source["timestamp"], null);
 	    }
 	

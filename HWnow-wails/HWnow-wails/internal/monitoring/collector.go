@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -1789,5 +1790,117 @@ func verifyGPUProcess(pid int32) (bool, error) {
 	}
 	
 	return false, nil
+}
+
+// I/O 속도 측정을 위한 캐시 구조체
+type ioStats struct {
+	diskReadBytes  uint64
+	diskWriteBytes uint64
+	netSentBytes   uint64
+	netRecvBytes   uint64
+	timestamp      time.Time
+}
+
+var (
+	lastIOStats *ioStats
+	ioStatsMutex sync.RWMutex
+)
+
+// GetDiskIOSpeed returns disk read/write speed in bytes per second
+func GetDiskIOSpeed() (float64, float64, error) {
+	diskStats, err := disk.IOCounters()
+	if err != nil {
+		return 0.0, 0.0, fmt.Errorf("failed to get disk I/O counters: %v", err)
+	}
+
+	// 모든 디스크의 통계를 합계
+	var totalRead, totalWrite uint64
+	for _, stats := range diskStats {
+		totalRead += stats.ReadBytes
+		totalWrite += stats.WriteBytes
+	}
+
+	ioStatsMutex.Lock()
+	defer ioStatsMutex.Unlock()
+
+	currentTime := time.Now()
+	
+	// 첫 번째 호출이거나 이전 데이터가 없으면 0 반환
+	if lastIOStats == nil {
+		lastIOStats = &ioStats{
+			diskReadBytes:  totalRead,
+			diskWriteBytes: totalWrite,
+			timestamp:      currentTime,
+		}
+		return 0.0, 0.0, nil
+	}
+
+	// 시간 차이 계산 (초 단위)
+	timeDiff := currentTime.Sub(lastIOStats.timestamp).Seconds()
+	if timeDiff <= 0 {
+		return 0.0, 0.0, nil
+	}
+
+	// 속도 계산 (bytes/second)
+	readSpeed := float64(totalRead-lastIOStats.diskReadBytes) / timeDiff
+	writeSpeed := float64(totalWrite-lastIOStats.diskWriteBytes) / timeDiff
+
+	// 현재 값을 저장
+	lastIOStats.diskReadBytes = totalRead
+	lastIOStats.diskWriteBytes = totalWrite
+	lastIOStats.timestamp = currentTime
+
+	return readSpeed, writeSpeed, nil
+}
+
+// GetNetworkIOSpeed returns network sent/received speed in bytes per second
+func GetNetworkIOSpeed() (float64, float64, error) {
+	netStats, err := net.IOCounters(false) // false = 모든 인터페이스 합계
+	if err != nil {
+		return 0.0, 0.0, fmt.Errorf("failed to get network I/O counters: %v", err)
+	}
+
+	if len(netStats) == 0 {
+		return 0.0, 0.0, fmt.Errorf("no network interfaces found")
+	}
+
+	// 모든 네트워크 인터페이스의 통계를 합계
+	var totalSent, totalRecv uint64
+	for _, stats := range netStats {
+		totalSent += stats.BytesSent
+		totalRecv += stats.BytesRecv
+	}
+
+	ioStatsMutex.Lock()
+	defer ioStatsMutex.Unlock()
+
+	currentTime := time.Now()
+	
+	// 첫 번째 호출이거나 이전 데이터가 없으면 0 반환
+	if lastIOStats == nil {
+		lastIOStats = &ioStats{
+			netSentBytes: totalSent,
+			netRecvBytes: totalRecv,
+			timestamp:    currentTime,
+		}
+		return 0.0, 0.0, nil
+	}
+
+	// 시간 차이 계산 (초 단위)
+	timeDiff := currentTime.Sub(lastIOStats.timestamp).Seconds()
+	if timeDiff <= 0 {
+		return 0.0, 0.0, nil
+	}
+
+	// 속도 계산 (bytes/second)
+	sentSpeed := float64(totalSent-lastIOStats.netSentBytes) / timeDiff
+	recvSpeed := float64(totalRecv-lastIOStats.netRecvBytes) / timeDiff
+
+	// 현재 값을 저장
+	lastIOStats.netSentBytes = totalSent
+	lastIOStats.netRecvBytes = totalRecv
+	lastIOStats.timestamp = currentTime
+
+	return sentSpeed, recvSpeed, nil
 }
 
