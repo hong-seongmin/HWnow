@@ -246,14 +246,18 @@ export class WailsEventService {
   // Public API methods
   
   public async startMonitoring(): Promise<void> {
+    console.log('[WailsEvents] Starting monitoring service...');
+    
     if (this.isRunning) {
       console.log('[WailsEvents] Monitoring already running');
       return;
     }
     
     try {
+      console.log('[WailsEvents] Calling backend startMonitoring API...');
       // Start backend monitoring service
       const result = await wailsApiService.startMonitoring();
+      console.log('[WailsEvents] Backend startMonitoring result:', result);
       if (!result.success) {
         throw new Error(result.message);
       }
@@ -710,7 +714,10 @@ export class WailsEventService {
 export const wailsEventService = WailsEventService.getInstance();
 
 // Legacy API compatibility functions
-export const initWebSocket = () => wailsEventService.startMonitoring();
+export const initWebSocket = () => {
+  console.log('[WailsEvents] initWebSocket called - starting monitoring...');
+  return wailsEventService.startMonitoring();
+};
 export const isWebSocketConnected = () => wailsEventService.isConnected();
 export const onConnectionStatusChange = (callback: ConnectionStatusCallback) => 
   wailsEventService.onConnectionStatusChange(callback);

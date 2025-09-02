@@ -31,6 +31,7 @@ function AppContent() {
   })
 
   useEffect(() => {
+    console.log('[App] Starting initWebSocket...');
     initWebSocket()
     
     // Check if onboarding has been completed

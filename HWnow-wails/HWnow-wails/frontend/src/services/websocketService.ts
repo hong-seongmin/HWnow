@@ -158,6 +158,11 @@ const connect = () => {
       
       const { setData } = useSystemResourceStore.getState();
 
+      // Debug logging for GPU data specifically
+      if (message.type.startsWith('gpu_')) {
+        console.log(`[WebSocket GPU Debug] Received ${message.type}:`, message.data?.value, message.data?.info);
+      }
+
       // Debug logging for new metrics (필터링된 로깅)
       if (message.type === 'system_uptime' || message.type.startsWith('disk_') || 
           message.type.startsWith('memory_') || message.type.startsWith('network_') || 
@@ -165,6 +170,11 @@ const connect = () => {
           message.type.startsWith('gpu_')) {
         // GPU 프로세스 메시지는 너무 많으므로 별도 처리
         if (!message.type.startsWith('gpu_process_')) {
+          console.log(`[WebSocket Metric Debug] ${message.type}:`, {
+            value: message.data?.value,
+            info: message.data?.info,
+            timestamp: new Date().toLocaleTimeString()
+          });
         }
       }
 
