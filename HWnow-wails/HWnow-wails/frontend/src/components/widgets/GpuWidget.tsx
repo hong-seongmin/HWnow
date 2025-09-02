@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useState, useEffect } from 'react';
 import { ResponsiveContainer, AreaChart, LineChart, BarChart, XAxis, YAxis, Tooltip, Area, Line, Bar } from 'recharts';
 import { useSystemResourceStore } from '../../stores/systemResourceStore';
 import { useDashboardStore } from '../../stores/dashboardStore';
@@ -14,6 +14,7 @@ interface WidgetProps {
 
 const GpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = false, onExpand }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   
   // 실제 GPU 데이터 사용
   const gpuUsageData = useSystemResourceStore((state) => state.data.gpu_usage);
@@ -34,25 +35,61 @@ const GpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = fal
   const showGpuPower = config.showGpuPower !== false;
   const showGraph = config.showGraph !== false;
 
-  // 최신 GPU 데이터 계산
+  // 데이터 안전성 확인 및 디버깅
+  const hasGpuData = gpuUsageData.length > 0 || gpuInfo.length > 0;
+  const hasRealGpuData = hasGpuData && gpuInfo.some(info => info.info && info.info !== "No GPU Detected");
+
+  // 디버그 로깅과 로딩 상태 관리
+  useEffect(() => {
+    console.log('[GPU Widget Debug]', {
+      gpuUsageData: gpuUsageData.length,
+      gpuMemoryUsedData: gpuMemoryUsedData.length,
+      gpuMemoryTotalData: gpuMemoryTotalData.length,
+      gpuTemperatureData: gpuTemperatureData.length,
+      gpuPowerData: gpuPowerData.length,
+      gpuInfo: gpuInfo.length,
+      hasGpuData,
+      hasRealGpuData,
+      latestGpuInfo: gpuInfo.length > 0 ? gpuInfo[gpuInfo.length - 1] : null
+    });
+
+    // 5초 후 로딩 상태 해제 (데이터가 없어도)
+    const loadingTimer = setTimeout(() => {
+      if (isLoading) {
+        console.log('[GPU Widget] Loading timeout - showing No Data state');
+        setIsLoading(false);
+      }
+    }, 5000);
+
+    // 데이터가 있으면 즉시 로딩 해제
+    if (hasGpuData && isLoading) {
+      console.log('[GPU Widget] Data received - stopping loading');
+      setIsLoading(false);
+    }
+
+    return () => clearTimeout(loadingTimer);
+  }, [gpuUsageData, gpuMemoryUsedData, gpuMemoryTotalData, gpuTemperatureData, gpuPowerData, gpuInfo, hasGpuData, isLoading]);
+  
+  // 최신 GPU 데이터 계산 (안전한 기본값 포함)
   const latestUsage = gpuUsageData.length > 0 ? gpuUsageData[gpuUsageData.length - 1] : 0;
   const latestMemoryUsed = gpuMemoryUsedData.length > 0 ? gpuMemoryUsedData[gpuMemoryUsedData.length - 1] : 0;
   const latestMemoryTotal = gpuMemoryTotalData.length > 0 ? gpuMemoryTotalData[gpuMemoryTotalData.length - 1] : 1;
   const latestTemperature = gpuTemperatureData.length > 0 ? gpuTemperatureData[gpuTemperatureData.length - 1] : 0;
   const latestPower = gpuPowerData.length > 0 ? gpuPowerData[gpuPowerData.length - 1] : 0;
-  const gpuName = gpuInfo.length > 0 ? gpuInfo[gpuInfo.length - 1].info : 'Unknown GPU';
+  const gpuName = gpuInfo.length > 0 && gpuInfo[gpuInfo.length - 1]?.info ? gpuInfo[gpuInfo.length - 1].info : 'No GPU Detected';
 
   // 메모리 사용률 계산 (퍼센트)
   const memoryUsagePercent = latestMemoryTotal > 0 ? (latestMemoryUsed / latestMemoryTotal) * 100 : 0;
 
-  // 설정된 데이터 포인트 수만큼만 표시
+  // 설정된 데이터 포인트 수만큼만 표시 (최소 차트 데이터 생성)
   const dataPoints = config.dataPoints || 50;
-  const usageChartData = gpuUsageData.slice(-dataPoints);
-  const memoryChartData = gpuMemoryUsedData.slice(-dataPoints).map((used, index) => {
-    const total = gpuMemoryTotalData[Math.min(index, gpuMemoryTotalData.length - 1)] || 1;
-    return (used / total) * 100;
-  });
-  const temperatureChartData = gpuTemperatureData.slice(-dataPoints);
+  const usageChartData = gpuUsageData.length > 0 ? gpuUsageData.slice(-dataPoints) : [0];
+  const memoryChartData = gpuMemoryUsedData.length > 0 ? 
+    gpuMemoryUsedData.slice(-dataPoints).map((used, index) => {
+      const total = gpuMemoryTotalData[Math.min(index, gpuMemoryTotalData.length - 1)] || 1;
+      return (used / total) * 100;
+    }) : [0];
+  const temperatureChartData = gpuTemperatureData.length > 0 ? gpuTemperatureData.slice(-dataPoints) : [0];
 
   const chartData = usageChartData.map((usage, index) => ({
     time: index,
@@ -148,53 +185,88 @@ const GpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = fal
         </div>
         
         <div className="widget-content">
-          <div 
-            className="widget-value" 
-            role="status" 
-            aria-live="polite" 
-            aria-atomic="true"
-            aria-label={`GPU usage is ${latestUsage.toFixed(1)} percent`}
-          >
-            <span className="widget-value-number" style={{ color: getGpuColor(latestUsage, 'usage') }}>
-              {latestUsage.toFixed(1)}
-            </span>
-            <span className="widget-value-unit" aria-label="percent">%</span>
-          </div>
-          
-          <div className="widget-info" role="complementary" aria-label="GPU information">
-            <div className="widget-info-item">
-              <span className="widget-info-label">Model:</span>
-              <span className="widget-info-value">
-                {gpuName}
-              </span>
+          {isLoading ? (
+            <div className="widget-loading" role="status" aria-live="polite">
+              <div className="widget-loading-spinner">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 12a9 9 0 11-6.219-8.56"/>
+                </svg>
+              </div>
+              <div className="widget-loading-text">
+                <div className="widget-loading-title">Loading GPU Data...</div>
+                <div className="widget-loading-subtitle">Detecting GPU hardware</div>
+              </div>
             </div>
-            {showGpuMemory && (
-              <div className="widget-info-item">
-                <span className="widget-info-label">Memory:</span>
-                <span className="widget-info-value" style={{ color: getGpuColor(memoryUsagePercent, 'memory') }}>
-                  {memoryUsagePercent.toFixed(1)}%
-                </span>
+          ) : !hasRealGpuData ? (
+            <div className="widget-no-data" role="status" aria-live="polite">
+              <div className="widget-no-data-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="32" height="32">
+                  <rect x="4" y="4" width="16" height="16" rx="2" />
+                  <rect x="9" y="9" width="6" height="6" />
+                  <line x1="9" y1="1" x2="9" y2="4" />
+                  <line x1="15" y1="1" x2="15" y2="4" />
+                  <line x1="9" y1="20" x2="9" y2="23" />
+                  <line x1="15" y1="20" x2="15" y2="23" />
+                  <line x1="20" y1="9" x2="23" y2="9" />
+                  <line x1="20" y1="14" x2="23" y2="14" />
+                  <line x1="1" y1="9" x2="4" y2="9" />
+                  <line x1="1" y1="14" x2="4" y2="14" />
+                </svg>
               </div>
-            )}
-            {showGpuTemperature && (
-              <div className="widget-info-item">
-                <span className="widget-info-label">Temperature:</span>
-                <span className="widget-info-value" style={{ color: getGpuColor(latestTemperature, 'temperature') }}>
-                  {latestTemperature.toFixed(1)}°C
-                </span>
+              <div className="widget-no-data-text">
+                <div className="widget-no-data-title">No GPU Data</div>
+                <div className="widget-no-data-subtitle">GPU not detected or data unavailable</div>
               </div>
-            )}
-            {showGpuPower && (
-              <div className="widget-info-item">
-                <span className="widget-info-label">Power:</span>
-                <span className="widget-info-value">
-                  {latestPower.toFixed(0)}W
+            </div>
+          ) : (
+            <>
+              <div 
+                className="widget-value" 
+                role="status" 
+                aria-live="polite" 
+                aria-atomic="true"
+                aria-label={`GPU usage is ${latestUsage.toFixed(1)} percent`}
+              >
+                <span className="widget-value-number" style={{ color: getGpuColor(latestUsage, 'usage') }}>
+                  {latestUsage.toFixed(1)}
                 </span>
+                <span className="widget-value-unit" aria-label="percent">%</span>
               </div>
-            )}
-          </div>
           
-          {showGraph && (
+              <div className="widget-info" role="complementary" aria-label="GPU information">
+                <div className="widget-info-item">
+                  <span className="widget-info-label">Model:</span>
+                  <span className="widget-info-value">
+                    {gpuName}
+                  </span>
+                </div>
+                {showGpuMemory && (
+                  <div className="widget-info-item">
+                    <span className="widget-info-label">Memory:</span>
+                    <span className="widget-info-value" style={{ color: getGpuColor(memoryUsagePercent, 'memory') }}>
+                      {memoryUsagePercent.toFixed(1)}%
+                    </span>
+                  </div>
+                )}
+                {showGpuTemperature && (
+                  <div className="widget-info-item">
+                    <span className="widget-info-label">Temperature:</span>
+                    <span className="widget-info-value" style={{ color: getGpuColor(latestTemperature, 'temperature') }}>
+                      {latestTemperature.toFixed(1)}°C
+                    </span>
+                  </div>
+                )}
+                {showGpuPower && (
+                  <div className="widget-info-item">
+                    <span className="widget-info-label">Power:</span>
+                    <span className="widget-info-value">
+                      {latestPower.toFixed(0)}W
+                    </span>
+                  </div>
+                )}
+              </div>
+              
+              {showGraph && (
             <div className="widget-chart" role="img" aria-label="GPU usage trend chart">
               <ResponsiveContainer width="100%" height="100%">
                 {config.chartType === 'line' ? (
@@ -334,6 +406,8 @@ const GpuWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = fal
                 )}
               </ResponsiveContainer>
             </div>
+              )}
+            </>
           )}
         </div>
       </div>

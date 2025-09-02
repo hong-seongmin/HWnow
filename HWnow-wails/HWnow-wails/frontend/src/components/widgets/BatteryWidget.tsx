@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useState, useEffect } from 'react';
 import { ResponsiveContainer, LineChart, AreaChart, XAxis, YAxis, Tooltip, Line, Area } from 'recharts';
 import { useSystemResourceStore } from '../../stores/systemResourceStore';
 import { useDashboardStore } from '../../stores/dashboardStore';
@@ -14,8 +14,25 @@ interface WidgetProps {
 
 const BatteryWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = false, onExpand }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const batteryPercentData = useSystemResourceStore((state) => state.data.battery_percent);
   const batteryPluggedData = useSystemResourceStore((state) => state.data.battery_plugged);
+
+  // 데이터 로딩 상태 관리
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 3000); // 3초 후 로딩 상태 해제
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  // 데이터 수신 시 로딩 상태 해제
+  useEffect(() => {
+    if (batteryPercentData.length > 0 || batteryPluggedData.length > 0) {
+      setIsLoading(false);
+    }
+  }, [batteryPercentData, batteryPluggedData]);
 
   const widget = useDashboardStore((state) => {
     const page = state.pages[state.activePageIndex];
@@ -25,6 +42,10 @@ const BatteryWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded =
   const config = widget?.config || {};
   const latestPercent = batteryPercentData.length > 0 ? batteryPercentData[batteryPercentData.length - 1] : 0;
   const latestPlugged = batteryPluggedData.length > 0 ? batteryPluggedData[batteryPluggedData.length - 1] : 0;
+
+  // 데이터 가용성 확인 (-1은 배터리 없음을 의미하므로 실제 배터리가 있는지 확인)
+  const hasBatteryData = batteryPercentData.length > 0 && latestPercent >= 0;
+  const noBattery = batteryPercentData.length > 0 && latestPercent === -1;
 
   const showChargingStatus = config.showChargingStatus !== false;
   const showBatteryTime = config.showBatteryTime !== false;
@@ -157,100 +178,137 @@ const BatteryWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded =
         </div>
         
         <div className="widget-content">
-          <div 
-            className="widget-value" 
-            role="status" 
-            aria-live="polite" 
-            aria-atomic="true"
-            aria-label={`Battery level is ${latestPercent.toFixed(1)} percent`}
-          >
-            <span className="widget-value-number" style={{ color: batteryColor }}>
-              {latestPercent.toFixed(1)}
-            </span>
-            <span className="widget-value-unit" aria-label="percent">%</span>
-          </div>
-          
-          <div className="widget-info" role="complementary" aria-label="Battery information">
-            {showChargingStatus && (
-              <div className="widget-info-item">
-                <span className="widget-info-label">Status:</span>
-                <span className="widget-info-value" style={{ color: latestPlugged === 1 ? 'var(--color-success)' : 'var(--color-warning)' }}>
-                  {getChargingStatusText()}
-                </span>
+          {isLoading ? (
+            <div className="widget-loading">
+              <div className="widget-loading-spinner">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                </svg>
               </div>
-            )}
-            {showBatteryTime && (
-              <div className="widget-info-item">
-                <span className="widget-info-label">Estimated:</span>
-                <span className="widget-info-value">
-                  {latestPercent > 20 ? '2h 30m' : latestPercent > 10 ? '45m' : '15m'}
-                </span>
-              </div>
-            )}
-            <div className="widget-info-item">
-              <span className="widget-info-label">Plugged:</span>
-              <span className="widget-info-value">
-                {latestPlugged === 1 ? 'Yes' : 'No'}
-              </span>
+              <div className="widget-loading-text">Loading battery data...</div>
             </div>
-          </div>
-          
-          {showGraph && (
-            <div className="widget-chart" role="img" aria-label="Battery level trend chart">
-              <ResponsiveContainer width="100%" height="100%">
-                {config.chartType === 'line' ? (
-                  <LineChart data={chartData} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
-                    <XAxis dataKey="time" hide />
-                    <YAxis domain={[0, 100]} hide />
-                    <Tooltip 
-                      formatter={(value: number) => [`${value.toFixed(1)}%`, 'Battery']}
-                      labelFormatter={() => ''}
-                      contentStyle={{ 
-                        backgroundColor: 'var(--color-surface)', 
-                        border: '1px solid var(--color-border)',
-                        borderRadius: 'var(--radius-sm)',
-                        color: 'var(--color-text-primary)'
-                      }}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="battery" 
-                      stroke={batteryColor}
-                      strokeWidth={2}
-                      dot={false}
-                    />
-                  </LineChart>
-                ) : (
-                  <AreaChart data={chartData} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="batteryGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor={batteryColor} stopOpacity={0.8}/>
-                        <stop offset="95%" stopColor={batteryColor} stopOpacity={0.1}/>
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="time" hide />
-                    <YAxis domain={[0, 100]} hide />
-                    <Tooltip 
-                      formatter={(value: number) => [`${value.toFixed(1)}%`, 'Battery']}
-                      labelFormatter={() => ''}
-                      contentStyle={{ 
-                        backgroundColor: 'var(--color-surface)', 
-                        border: '1px solid var(--color-border)',
-                        borderRadius: 'var(--radius-sm)',
-                        color: 'var(--color-text-primary)'
-                      }}
-                    />
-                    <Area 
-                      type="monotone" 
-                      dataKey="battery" 
-                      stroke={batteryColor}
-                      strokeWidth={2}
-                      fill="url(#batteryGradient)"
-                    />
-                  </AreaChart>
+          ) : noBattery ? (
+            <div className="widget-no-data">
+              <div className="widget-no-data-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="1" y="6" width="18" height="12" rx="2" ry="2" />
+                  <line x1="23" y1="13" x2="23" y2="11" />
+                  <line x1="8" y1="8" x2="16" y2="16" />
+                  <line x1="8" y1="16" x2="16" y2="8" />
+                </svg>
+              </div>
+              <div className="widget-no-data-message">No battery detected</div>
+              <div className="widget-no-data-subtitle">This system does not have a battery or battery monitoring is not available</div>
+            </div>
+          ) : !hasBatteryData ? (
+            <div className="widget-no-data">
+              <div className="widget-no-data-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="1" y="6" width="18" height="12" rx="2" ry="2" />
+                  <line x1="23" y1="13" x2="23" y2="11" />
+                </svg>
+              </div>
+              <div className="widget-no-data-message">No battery data available</div>
+              <div className="widget-no-data-subtitle">Battery monitoring may not be supported or enabled</div>
+            </div>
+          ) : (
+            <>
+              <div 
+                className="widget-value" 
+                role="status" 
+                aria-live="polite" 
+                aria-atomic="true"
+                aria-label={`Battery level is ${latestPercent.toFixed(1)} percent`}
+              >
+                <span className="widget-value-number" style={{ color: batteryColor }}>
+                  {latestPercent.toFixed(1)}
+                </span>
+                <span className="widget-value-unit" aria-label="percent">%</span>
+              </div>
+              
+              <div className="widget-info" role="complementary" aria-label="Battery information">
+                {showChargingStatus && (
+                  <div className="widget-info-item">
+                    <span className="widget-info-label">Status:</span>
+                    <span className="widget-info-value" style={{ color: latestPlugged === 1 ? 'var(--color-success)' : 'var(--color-warning)' }}>
+                      {getChargingStatusText()}
+                    </span>
+                  </div>
                 )}
-              </ResponsiveContainer>
-            </div>
+                {showBatteryTime && (
+                  <div className="widget-info-item">
+                    <span className="widget-info-label">Estimated:</span>
+                    <span className="widget-info-value">
+                      {latestPercent > 20 ? '2h 30m' : latestPercent > 10 ? '45m' : '15m'}
+                    </span>
+                  </div>
+                )}
+                <div className="widget-info-item">
+                  <span className="widget-info-label">Plugged:</span>
+                  <span className="widget-info-value">
+                    {latestPlugged === 1 ? 'Yes' : 'No'}
+                  </span>
+                </div>
+              </div>
+              
+              {showGraph && (
+                <div className="widget-chart" role="img" aria-label="Battery level trend chart">
+                  <ResponsiveContainer width="100%" height="100%">
+                    {config.chartType === 'line' ? (
+                      <LineChart data={chartData} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
+                        <XAxis dataKey="time" hide />
+                        <YAxis domain={[0, 100]} hide />
+                        <Tooltip 
+                          formatter={(value: number) => [`${value.toFixed(1)}%`, 'Battery']}
+                          labelFormatter={() => ''}
+                          contentStyle={{ 
+                            backgroundColor: 'var(--color-surface)', 
+                            border: '1px solid var(--color-border)',
+                            borderRadius: 'var(--radius-sm)',
+                            color: 'var(--color-text-primary)'
+                          }}
+                        />
+                        <Line 
+                          type="monotone" 
+                          dataKey="battery" 
+                          stroke={batteryColor}
+                          strokeWidth={2}
+                          dot={false}
+                        />
+                      </LineChart>
+                    ) : (
+                      <AreaChart data={chartData} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="batteryGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor={batteryColor} stopOpacity={0.8}/>
+                            <stop offset="95%" stopColor={batteryColor} stopOpacity={0.1}/>
+                          </linearGradient>
+                        </defs>
+                        <XAxis dataKey="time" hide />
+                        <YAxis domain={[0, 100]} hide />
+                        <Tooltip 
+                          formatter={(value: number) => [`${value.toFixed(1)}%`, 'Battery']}
+                          labelFormatter={() => ''}
+                          contentStyle={{ 
+                            backgroundColor: 'var(--color-surface)', 
+                            border: '1px solid var(--color-border)',
+                            borderRadius: 'var(--radius-sm)',
+                            color: 'var(--color-text-primary)'
+                          }}
+                        />
+                        <Area 
+                          type="monotone" 
+                          dataKey="battery" 
+                          stroke={batteryColor}
+                          strokeWidth={2}
+                          fill="url(#batteryGradient)"
+                        />
+                      </AreaChart>
+                    )}
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

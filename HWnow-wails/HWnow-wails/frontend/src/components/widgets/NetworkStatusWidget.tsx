@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useState, useEffect } from 'react';
 import { useSystemResourceStore } from '../../stores/systemResourceStore';
 import { useDashboardStore } from '../../stores/dashboardStore';
 import { SettingsModal } from '../common/SettingsModal';
@@ -13,7 +13,24 @@ interface WidgetProps {
 
 const NetworkStatusWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = false, onExpand }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const networkInterfaces = useSystemResourceStore((state) => state.data.network_interfaces);
+
+  // 데이터 로딩 상태 관리
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 3000); // 3초 후 로딩 상태 해제
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  // 데이터 수신 시 로딩 상태 해제
+  useEffect(() => {
+    if (Object.keys(networkInterfaces).length > 0) {
+      setIsLoading(false);
+    }
+  }, [networkInterfaces]);
 
   const widget = useDashboardStore((state) => {
     const page = state.pages[state.activePageIndex];
@@ -43,6 +60,7 @@ const NetworkStatusWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpa
   const networkList = getNetworkList();
   const connectedCount = networkList.filter(n => n.isConnected).length;
   const totalCount = networkList.length;
+  const hasNetworkData = Object.keys(networkInterfaces).length > 0;
 
   const handleSettingsClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -109,73 +127,99 @@ const NetworkStatusWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpa
         </div>
         
         <div className="widget-content">
-          <div 
-            className="widget-value" 
-            role="status" 
-            aria-live="polite" 
-            aria-atomic="true"
-            aria-label={`${connectedCount} of ${totalCount} network interfaces connected`}
-          >
-            <span className="widget-value-number" style={{ color: connectedCount > 0 ? 'var(--color-success)' : 'var(--color-error)' }}>
-              {connectedCount}
-            </span>
-            <span className="widget-value-text">/ {totalCount}</span>
-          </div>
-          
-          <div className="widget-info" role="complementary" aria-label="Network interface details">
-            {networkList.length === 0 ? (
-              <div className="widget-info-item">
-                <span className="widget-info-value">No network interfaces detected</span>
+          {isLoading ? (
+            <div className="widget-loading">
+              <div className="widget-loading-spinner">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                </svg>
               </div>
-            ) : (
-              <div className="network-interfaces-list">
-                {networkList.map((network) => (
-                  <div key={network.name} className="network-interface-item">
-                    <div className="network-interface-header">
-                      <span className="network-interface-name">{network.name}</span>
-                      <span 
-                        className="network-interface-status" 
-                        style={{ 
-                          color: network.isConnected ? 'var(--color-success)' : 'var(--color-error)' 
-                        }}
-                      >
-                        {network.status}
-                      </span>
-                    </div>
-                    
-                    {showIpAddress && network.ip !== 'N/A' && (
-                      <div className="network-interface-details">
-                        <span className="network-interface-ip">{network.ip}</span>
-                      </div>
-                    )}
-                    
-                    {showBandwidth && (
-                      <div className="network-interface-details">
-                        <span className="network-interface-bandwidth">
-                          {network.isConnected ? '1 Gbps' : 'N/A'}
-                        </span>
-                      </div>
-                    )}
+              <div className="widget-loading-text">Loading network data...</div>
+            </div>
+          ) : !hasNetworkData ? (
+            <div className="widget-no-data">
+              <div className="widget-no-data-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M5 12.55a11 11 0 0 1 14.08 0" />
+                  <path d="M1.42 9a16 16 0 0 1 21.16 0" />
+                  <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+                  <line x1="12" y1="20" x2="12.01" y2="20" />
+                </svg>
+              </div>
+              <div className="widget-no-data-message">No network data available</div>
+              <div className="widget-no-data-subtitle">Network monitoring may not be supported or enabled</div>
+            </div>
+          ) : (
+            <>
+              <div 
+                className="widget-value" 
+                role="status" 
+                aria-live="polite" 
+                aria-atomic="true"
+                aria-label={`${connectedCount} of ${totalCount} network interfaces connected`}
+              >
+                <span className="widget-value-number" style={{ color: connectedCount > 0 ? 'var(--color-success)' : 'var(--color-error)' }}>
+                  {connectedCount}
+                </span>
+                <span className="widget-value-text">/ {totalCount}</span>
+              </div>
+              
+              <div className="widget-info" role="complementary" aria-label="Network interface details">
+                {networkList.length === 0 ? (
+                  <div className="widget-info-item">
+                    <span className="widget-info-value">No network interfaces detected</span>
                   </div>
-                ))}
+                ) : (
+                  <div className="network-interfaces-list">
+                    {networkList.map((network) => (
+                      <div key={network.name} className="network-interface-item">
+                        <div className="network-interface-header">
+                          <span className="network-interface-name">{network.name}</span>
+                          <span 
+                            className="network-interface-status" 
+                            style={{ 
+                              color: network.isConnected ? 'var(--color-success)' : 'var(--color-error)' 
+                            }}
+                          >
+                            {network.status}
+                          </span>
+                        </div>
+                        
+                        {showIpAddress && network.ip !== 'N/A' && (
+                          <div className="network-interface-details">
+                            <span className="network-interface-ip">{network.ip}</span>
+                          </div>
+                        )}
+                        
+                        {showBandwidth && (
+                          <div className="network-interface-details">
+                            <span className="network-interface-bandwidth">
+                              {network.isConnected ? '1 Gbps' : 'N/A'}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          
-          <div className="widget-summary">
-            <div className="widget-info-item">
-              <span className="widget-info-label">Active:</span>
-              <span className="widget-info-value" style={{ color: 'var(--color-success)' }}>
-                {connectedCount}
-              </span>
-            </div>
-            <div className="widget-info-item">
-              <span className="widget-info-label">Inactive:</span>
-              <span className="widget-info-value" style={{ color: 'var(--color-error)' }}>
-                {totalCount - connectedCount}
-              </span>
-            </div>
-          </div>
+              
+              <div className="widget-summary">
+                <div className="widget-info-item">
+                  <span className="widget-info-label">Active:</span>
+                  <span className="widget-info-value" style={{ color: 'var(--color-success)' }}>
+                    {connectedCount}
+                  </span>
+                </div>
+                <div className="widget-info-item">
+                  <span className="widget-info-label">Inactive:</span>
+                  <span className="widget-info-value" style={{ color: 'var(--color-error)' }}>
+                    {totalCount - connectedCount}
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
       

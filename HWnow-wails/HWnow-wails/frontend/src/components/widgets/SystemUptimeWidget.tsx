@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useState, useEffect } from 'react';
 import { useSystemResourceStore } from '../../stores/systemResourceStore';
 import { useDashboardStore } from '../../stores/dashboardStore';
 import { SettingsModal } from '../common/SettingsModal';
@@ -13,7 +13,24 @@ interface WidgetProps {
 
 const SystemUptimeWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = false, onExpand }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const uptimeData = useSystemResourceStore((state) => state.data.system_uptime);
+
+  // 데이터 로딩 상태 관리
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 3000); // 3초 후 로딩 상태 해제
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  // 데이터 수신 시 로딩 상태 해제
+  useEffect(() => {
+    if (uptimeData.length > 0) {
+      setIsLoading(false);
+    }
+  }, [uptimeData]);
 
   const widget = useDashboardStore((state) => {
     const page = state.pages[state.activePageIndex];
@@ -21,6 +38,9 @@ const SystemUptimeWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpan
   });
   
   const latestUptime = uptimeData.length > 0 ? uptimeData[uptimeData.length - 1] : 0;
+
+  // 데이터 가용성 확인
+  const hasUptimeData = uptimeData.length > 0;
 
   // 초를 읽기 쉬운 형태로 변환
   const formatUptime = (seconds: number) => {
@@ -103,38 +123,62 @@ const SystemUptimeWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpan
         </div>
         
         <div className="widget-content">
-          <div 
-            className="widget-value large" 
-            role="status" 
-            aria-live="polite" 
-            aria-atomic="true"
-            aria-label={`System has been running for ${formatUptime(latestUptime)}`}
-          >
-            <span className="widget-value-text">
-              {formatUptime(latestUptime)}
-            </span>
-          </div>
-          
-          <div className="widget-info" role="complementary" aria-label="Uptime details">
-            <div className="widget-info-item">
-              <span className="widget-info-label">Total seconds:</span>
-              <span className="widget-info-value">
-                {latestUptime.toFixed(0)}
-              </span>
+          {isLoading ? (
+            <div className="widget-loading">
+              <div className="widget-loading-spinner">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                </svg>
+              </div>
+              <div className="widget-loading-text">Loading uptime data...</div>
             </div>
-            <div className="widget-info-item">
-              <span className="widget-info-label">Days:</span>
-              <span className="widget-info-value">
-                {Math.floor(latestUptime / 86400)}
-              </span>
+          ) : !hasUptimeData ? (
+            <div className="widget-no-data">
+              <div className="widget-no-data-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12,6 12,12 16,14" />
+                </svg>
+              </div>
+              <div className="widget-no-data-message">No uptime data available</div>
+              <div className="widget-no-data-subtitle">System uptime monitoring may not be supported or enabled</div>
             </div>
-            <div className="widget-info-item">
-              <span className="widget-info-label">Hours:</span>
-              <span className="widget-info-value">
-                {Math.floor((latestUptime % 86400) / 3600)}
-              </span>
-            </div>
-          </div>
+          ) : (
+            <>
+              <div 
+                className="widget-value large" 
+                role="status" 
+                aria-live="polite" 
+                aria-atomic="true"
+                aria-label={`System has been running for ${formatUptime(latestUptime)}`}
+              >
+                <span className="widget-value-text">
+                  {formatUptime(latestUptime)}
+                </span>
+              </div>
+              
+              <div className="widget-info" role="complementary" aria-label="Uptime details">
+                <div className="widget-info-item">
+                  <span className="widget-info-label">Total seconds:</span>
+                  <span className="widget-info-value">
+                    {latestUptime.toFixed(0)}
+                  </span>
+                </div>
+                <div className="widget-info-item">
+                  <span className="widget-info-label">Days:</span>
+                  <span className="widget-info-value">
+                    {Math.floor(latestUptime / 86400)}
+                  </span>
+                </div>
+                <div className="widget-info-item">
+                  <span className="widget-info-label">Hours:</span>
+                  <span className="widget-info-value">
+                    {Math.floor((latestUptime % 86400) / 3600)}
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
       

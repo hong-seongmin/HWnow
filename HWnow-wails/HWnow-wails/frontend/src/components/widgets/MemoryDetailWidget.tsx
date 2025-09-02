@@ -24,6 +24,10 @@ const MemoryDetailWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpan
   });
   
   const config = widget?.config || {};
+  
+  // 데이터 안전성 확인
+  const hasMemoryData = physicalMemoryData.length > 0 || virtualMemoryData.length > 0 || swapMemoryData.length > 0;
+  
   const latestPhysical = physicalMemoryData.length > 0 ? physicalMemoryData[physicalMemoryData.length - 1] : 0;
   const latestVirtual = virtualMemoryData.length > 0 ? virtualMemoryData[virtualMemoryData.length - 1] : 0;
   const latestSwap = swapMemoryData.length > 0 ? swapMemoryData[swapMemoryData.length - 1] : 0;
@@ -33,11 +37,11 @@ const MemoryDetailWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpan
   const showSwapMemory = config.showSwapMemory !== false;
   const showGraph = config.showGraph !== false;
 
-  // 설정된 데이터 포인트 수만큼만 표시
+  // 설정된 데이터 포인트 수만큼만 표시 (안전한 기본값 포함)
   const dataPoints = config.dataPoints || 50;
-  const displayPhysicalData = physicalMemoryData.slice(-dataPoints);
-  const displayVirtualData = virtualMemoryData.slice(-dataPoints);
-  const displaySwapData = swapMemoryData.slice(-dataPoints);
+  const displayPhysicalData = physicalMemoryData.length > 0 ? physicalMemoryData.slice(-dataPoints) : [0];
+  const displayVirtualData = virtualMemoryData.length > 0 ? virtualMemoryData.slice(-dataPoints) : [0];
+  const displaySwapData = swapMemoryData.length > 0 ? swapMemoryData.slice(-dataPoints) : [0];
 
   const chartData = displayPhysicalData.map((value, index) => ({
     time: index,
@@ -124,35 +128,49 @@ const MemoryDetailWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpan
         </div>
         
         <div className="widget-content">
-          <div className="widget-info" role="status" aria-live="polite" aria-atomic="true">
-            {showPhysicalMemory && (
-              <div className="widget-info-item">
-                <span className="widget-info-label">Physical:</span>
-                <span className="widget-info-value" style={{ color: getMemoryColor(latestPhysical, 'physical') }}>
-                  {latestPhysical.toFixed(1)}%
-                </span>
+          {!hasMemoryData ? (
+            <div className="widget-no-data" role="status" aria-live="polite">
+              <div className="widget-no-data-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="32" height="32">
+                  <path d="M3 12h18m-9 4.5V7.5m-4.5 4.5L10 9l-2.5 3 2.5 3m5-6l2.5 3L15 15" />
+                </svg>
               </div>
-            )}
-            {showVirtualMemory && (
-              <div className="widget-info-item">
-                <span className="widget-info-label">Virtual:</span>
-                <span className="widget-info-value" style={{ color: getMemoryColor(latestVirtual, 'virtual') }}>
-                  {latestVirtual.toFixed(1)}%
-                </span>
+              <div className="widget-no-data-text">
+                <div className="widget-no-data-title">No Memory Detail Data</div>
+                <div className="widget-no-data-subtitle">Detailed memory information unavailable</div>
               </div>
-            )}
-            {showSwapMemory && (
-              <div className="widget-info-item">
-                <span className="widget-info-label">Swap:</span>
-                <span className="widget-info-value" style={{ color: getMemoryColor(latestSwap, 'swap') }}>
-                  {latestSwap.toFixed(1)}%
-                </span>
+            </div>
+          ) : (
+            <>
+              <div className="widget-info" role="status" aria-live="polite" aria-atomic="true">
+                {showPhysicalMemory && (
+                  <div className="widget-info-item">
+                    <span className="widget-info-label">Physical:</span>
+                    <span className="widget-info-value" style={{ color: getMemoryColor(latestPhysical, 'physical') }}>
+                      {latestPhysical.toFixed(1)}%
+                    </span>
+                  </div>
+                )}
+                {showVirtualMemory && (
+                  <div className="widget-info-item">
+                    <span className="widget-info-label">Virtual:</span>
+                    <span className="widget-info-value" style={{ color: getMemoryColor(latestVirtual, 'virtual') }}>
+                      {latestVirtual.toFixed(1)}%
+                    </span>
+                  </div>
+                )}
+                {showSwapMemory && (
+                  <div className="widget-info-item">
+                    <span className="widget-info-label">Swap:</span>
+                    <span className="widget-info-value" style={{ color: getMemoryColor(latestSwap, 'swap') }}>
+                      {latestSwap.toFixed(1)}%
+                    </span>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
           
-          {showGraph && (
-            <div className="widget-chart" role="img" aria-label="Memory usage trend chart">
+              {showGraph && (
+                <div className="widget-chart" role="img" aria-label="Memory usage trend chart">
               <ResponsiveContainer width="100%" height="100%">
                 {config.chartType === 'line' ? (
                   <LineChart data={chartData} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
@@ -296,7 +314,9 @@ const MemoryDetailWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpan
                   </AreaChart>
                 )}
               </ResponsiveContainer>
-            </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
