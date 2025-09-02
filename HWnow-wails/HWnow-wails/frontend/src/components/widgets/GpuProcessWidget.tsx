@@ -10,6 +10,121 @@ import { onConnectionStatusChange, getWebSocketStatus, flushGPUProcessBatch } fr
 import { getGPUProcessConfigWithDefaults, GPU_PROCESS_PRESETS, type GPUProcessPresetType } from '../../utils/gpuProcessWidgetDefaults';
 import './widget.css';
 
+// Error Boundary Component for GPUProcessWidget
+class GPUProcessErrorBoundary extends React.Component<
+  { children: React.ReactNode; widgetId: string },
+  { hasError: boolean; error?: Error }
+> {
+  constructor(props: { children: React.ReactNode; widgetId: string }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('[GPUProcessWidget] Rendering error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="widget widget-gpu-process" role="region" aria-label="GPU Process Monitor - Error">
+          <div className="widget-header">
+            <div className="widget-title">
+              <div className="widget-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                </svg>
+              </div>
+              <span>GPU Processes</span>
+            </div>
+          </div>
+          <div className="widget-content">
+            <div className="widget-error">
+              <div className="widget-error-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="15" y1="9" x2="9" y2="15"/>
+                  <line x1="9" y1="9" x2="15" y2="15"/>
+                </svg>
+              </div>
+              <div className="widget-error-message">Widget Error</div>
+              <div className="widget-error-subtitle">Failed to display GPU process data</div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+// Data validation utility functions
+interface GPUProcessData {
+  pid: number;
+  name: string;
+  gpu_usage: number;
+  gpu_memory: number;
+  type: string;
+  command: string;
+  status: string;
+}
+
+const isValidNumber = (value: unknown): value is number => {
+  return typeof value === 'number' && !isNaN(value) && isFinite(value);
+};
+
+const isValidGPUProcess = (process: unknown): process is GPUProcessData => {
+  if (!process || typeof process !== 'object') return false;
+  
+  const p = process as any;
+  return (
+    isValidNumber(p.pid) && p.pid > 0 &&
+    typeof p.name === 'string' && p.name.length > 0 &&
+    isValidNumber(p.gpu_usage) && p.gpu_usage >= 0 &&
+    isValidNumber(p.gpu_memory) && p.gpu_memory >= 0 &&
+    typeof p.type === 'string' &&
+    typeof p.command === 'string' &&
+    typeof p.status === 'string'
+  );
+};
+
+const getSafeGPUProcesses = (processes: unknown[]): GPUProcessData[] => {
+  if (!Array.isArray(processes)) return [];
+  
+  return processes
+    .filter(isValidGPUProcess)
+    .map(process => ({
+      ...process,
+      gpu_usage: Math.min(Math.max(process.gpu_usage, 0), 999), // Cap GPU usage at 999%
+      gpu_memory: Math.min(Math.max(process.gpu_memory, 0), 999999) // Cap memory at reasonable limit
+    }));
+};
+
+const safeToFixed = (value: number, digits: number = 1): string => {
+  try {
+    if (!isValidNumber(value)) return '0.0';
+    return value.toFixed(digits);
+  } catch (error) {
+    console.warn('[GPUProcessWidget] toFixed error:', error, 'value:', value);
+    return '0.0';
+  }
+};
+
+// Safe key generation for React
+const getSafeKey = (process: GPUProcessData, index: number): string => {
+  try {
+    const pid = isValidNumber(process.pid) ? process.pid : index;
+    return `gpu-process-${pid}-${index}`;
+  } catch (error) {
+    return `gpu-process-fallback-${index}`;
+  }
+};
+
 interface WidgetProps {
   widgetId: string;
   onRemove: () => void;
@@ -17,7 +132,7 @@ interface WidgetProps {
   onExpand?: () => void;
 }
 
-const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = false, onExpand }) => {
+const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = false, onExpand }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [selectedProcesses, setSelectedProcesses] = useState<Set<number>>(new Set());
@@ -45,7 +160,12 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
   const { showConfirm, ConfirmComponent } = useConfirmDialog();
   const { showProcessSuccess, showProcessError, showBulkProcessResult } = useToast();
   
-  const gpuProcesses = useSystemResourceStore((state) => state.data.gpu_processes);
+  const rawGpuProcesses = useSystemResourceStore((state) => state.data.gpu_processes);
+  const [componentMountTime] = useState(Date.now());
+  const [previousProcesses, setPreviousProcesses] = useState<GPUProcessData[]>([]);
+  
+  // Safe GPU process data extraction
+  const gpuProcesses = getSafeGPUProcesses(rawGpuProcesses);
 
   // 초기 로드 상태 관리
   React.useEffect(() => {
@@ -388,9 +508,6 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
     }
   };
 
-  const [componentMountTime] = useState(Date.now());
-  const [previousProcesses, setPreviousProcesses] = useState<typeof gpuProcesses>([]);
-
   const widget = useDashboardStore((state) => {
     const page = state.pages[state.activePageIndex];
     return page?.widgets.find((w) => w.i === widgetId);
@@ -408,56 +525,82 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
   const showUpdateIndicators = config.gpuShowUpdateIndicators !== false; // default true
   const enableUpdateAnimations = config.gpuEnableUpdateAnimations !== false; // default true
 
-  // 프로세스 필터링
-  const getFilteredProcesses = () => {
+  // 프로세스 필터링 - Safe version
+  const getFilteredProcesses = (): GPUProcessData[] => {
+    if (!Array.isArray(gpuProcesses) || gpuProcesses.length === 0) return [];
     if (!filterEnabled) return gpuProcesses;
 
-    return gpuProcesses.filter(process => {
-      const meetsUsageThreshold = process.gpu_usage >= usageThreshold;
-      const meetsMemoryThreshold = process.gpu_memory >= memoryThreshold;
+    try {
+      return gpuProcesses.filter(process => {
+        const meetsUsageThreshold = isValidNumber(process.gpu_usage) ? process.gpu_usage >= usageThreshold : false;
+        const meetsMemoryThreshold = isValidNumber(process.gpu_memory) ? process.gpu_memory >= memoryThreshold : false;
 
-      if (filterType === 'and') {
-        return meetsUsageThreshold && meetsMemoryThreshold;
-      } else {
-        return meetsUsageThreshold || meetsMemoryThreshold;
-      }
-    });
+        if (filterType === 'and') {
+          return meetsUsageThreshold && meetsMemoryThreshold;
+        } else {
+          return meetsUsageThreshold || meetsMemoryThreshold;
+        }
+      });
+    } catch (error) {
+      console.warn('[GPUProcessWidget] Filter error:', error);
+      return gpuProcesses; // Fallback without filtering
+    }
   };
 
-  // 프로세스 정렬 및 제한
-  const getSortedProcesses = () => {
+  // 프로세스 정렬 및 제한 - Safe version
+  const getSortedProcesses = (): GPUProcessData[] => {
     const filtered = getFilteredProcesses();
-    const sorted = [...filtered].sort((a, b) => {
-      let comparison = 0;
-      
-      switch (sortBy) {
-        case 'gpu_usage':
-          comparison = a.gpu_usage - b.gpu_usage;
-          break;
-        case 'gpu_memory':
-          comparison = a.gpu_memory - b.gpu_memory;
-          break;
-        case 'name':
-          comparison = a.name.localeCompare(b.name);
-          break;
-        case 'pid':
-          comparison = a.pid - b.pid;
-          break;
-        case 'type':
-          comparison = a.type.localeCompare(b.type);
-          break;
-        case 'status':
-          comparison = a.status.localeCompare(b.status);
-          break;
-        default:
-          comparison = 0;
-      }
-      
-      // 정렬 순서 적용
-      return sortOrder === 'asc' ? comparison : -comparison;
-    });
+    if (!Array.isArray(filtered) || filtered.length === 0) return [];
     
-    return sorted.slice(0, processCount);
+    try {
+      const sorted = [...filtered].sort((a, b) => {
+        let comparison = 0;
+        
+        switch (sortBy) {
+          case 'gpu_usage':
+            const aUsage = isValidNumber(a.gpu_usage) ? a.gpu_usage : 0;
+            const bUsage = isValidNumber(b.gpu_usage) ? b.gpu_usage : 0;
+            comparison = aUsage - bUsage;
+            break;
+          case 'gpu_memory':
+            const aMemory = isValidNumber(a.gpu_memory) ? a.gpu_memory : 0;
+            const bMemory = isValidNumber(b.gpu_memory) ? b.gpu_memory : 0;
+            comparison = aMemory - bMemory;
+            break;
+          case 'name':
+            const aName = typeof a.name === 'string' ? a.name : '';
+            const bName = typeof b.name === 'string' ? b.name : '';
+            comparison = aName.localeCompare(bName);
+            break;
+          case 'pid':
+            const aPid = isValidNumber(a.pid) ? a.pid : 0;
+            const bPid = isValidNumber(b.pid) ? b.pid : 0;
+            comparison = aPid - bPid;
+            break;
+          case 'type':
+            const aType = typeof a.type === 'string' ? a.type : '';
+            const bType = typeof b.type === 'string' ? b.type : '';
+            comparison = aType.localeCompare(bType);
+            break;
+          case 'status':
+            const aStatus = typeof a.status === 'string' ? a.status : '';
+            const bStatus = typeof b.status === 'string' ? b.status : '';
+            comparison = aStatus.localeCompare(bStatus);
+            break;
+          default:
+            comparison = 0;
+        }
+        
+        // 정렬 순서 적용
+        return sortOrder === 'asc' ? comparison : -comparison;
+      });
+      
+      const safeProcessCount = Math.min(Math.max(processCount, 1), 100); // Safe range 1-100
+      return sorted.slice(0, safeProcessCount);
+    } catch (error) {
+      console.warn('[GPUProcessWidget] Sort error:', error);
+      return filtered.slice(0, Math.min(processCount, 10)); // Fallback without sorting
+    }
   };
 
   const sortedProcesses = getSortedProcesses();
@@ -1569,16 +1712,16 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                   
                   return (
                   <div 
-                    key={`${process.pid}-${index}`} 
+                    key={getSafeKey(process, index)} 
                     className={`process-item ${statusClass} ${usageClass} ${memoryClass} ${typeClass} ${selectedProcesses.has(process.pid) ? 'process-selected' : ''} ${hasRecentChanges && enableUpdateAnimations ? 'process-updated' : ''} ${focusedRowIndex === index && isKeyboardNavigation ? 'process-keyboard-focused' : ''}`}
-                    title={`${process.name} (PID: ${process.pid})\nStatus: ${process.status}\nGPU Usage: ${process.gpu_usage.toFixed(1)}%\nGPU Memory: ${process.gpu_memory.toFixed(0)}MB${updateInfo ? `\nLast updated: ${formatTime(updateInfo.timestamp)}` : ''}`}
+                    title={`${process.name} (PID: ${process.pid})\nStatus: ${process.status}\nGPU Usage: ${safeToFixed(process.gpu_usage, 1)}%\nGPU Memory: ${safeToFixed(process.gpu_memory, 0)}MB${updateInfo ? `\nLast updated: ${formatTime(updateInfo.timestamp)}` : ''}`}
                     onClick={(e) => handleProcessSelect(process.pid, e)}
                     onContextMenu={(e) => handleContextMenu(e, process.pid, process.name)}
                     tabIndex={0}
                     role="row"
                     aria-rowindex={index + 1}
                     aria-selected={selectedProcesses.has(process.pid)}
-                    aria-label={`${index + 1}번째 프로세스: ${process.name}, PID ${process.pid}, GPU 사용률 ${process.gpu_usage.toFixed(1)}%, 메모리 ${process.gpu_memory.toFixed(0)}MB, 상태 ${process.status}`}
+                    aria-label={`${index + 1}번째 프로세스: ${process.name}, PID ${process.pid}, GPU 사용률 ${safeToFixed(process.gpu_usage, 1)}%, 메모리 ${safeToFixed(process.gpu_memory, 0)}MB, 상태 ${process.status}`}
                     data-process-index={index}
                     onFocus={() => {
                       if (!isKeyboardNavigation) {
@@ -1654,7 +1797,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                     <div 
                       className="process-gpu"
                       role="gridcell"
-                      aria-label={`GPU 사용률: ${process.gpu_usage.toFixed(1)}퍼센트`}
+                      aria-label={`GPU 사용률: ${safeToFixed(process.gpu_usage, 1)}퍼센트`}
                       style={{ 
                         color: process.gpu_usage > 90 ? 'var(--color-error)' : 
                                process.gpu_usage > 70 ? 'var(--color-warning)' : 
@@ -1663,7 +1806,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                         fontWeight: process.gpu_usage > 80 ? '700' : '500',
                         position: 'relative'
                       }}
-                      title={`GPU Usage: ${process.gpu_usage.toFixed(1)}%`}
+                      title={`GPU Usage: ${safeToFixed(process.gpu_usage, 1)}%`}
                     >
                       {process.gpu_usage > 95 && (
                         <span 
@@ -1678,12 +1821,12 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                           }}
                         >🔥</span>
                       )}
-                      {process.gpu_usage.toFixed(1)}%
+                      {safeToFixed(process.gpu_usage, 1)}%
                     </div>
                     <div 
                       className="process-memory"
                       role="gridcell"
-                      aria-label={`GPU 메모리 사용량: ${process.gpu_memory < 1024 ? `${process.gpu_memory.toFixed(0)}메가바이트` : `${(process.gpu_memory / 1024).toFixed(1)}기가바이트`}`}
+                      aria-label={`GPU 메모리 사용량: ${process.gpu_memory < 1024 ? `${safeToFixed(process.gpu_memory, 0)}메가바이트` : `${safeToFixed(process.gpu_memory / 1024, 1)}기가바이트`}`}
                       style={{ 
                         color: process.gpu_memory > 2048 ? 'var(--color-error)' : 
                                process.gpu_memory > 1024 ? 'var(--color-warning)' : 
@@ -1692,7 +1835,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                         fontWeight: process.gpu_memory > 1536 ? '700' : '500',
                         position: 'relative'
                       }}
-                      title={`GPU Memory: ${process.gpu_memory.toFixed(0)}MB`}
+                      title={`GPU Memory: ${safeToFixed(process.gpu_memory, 0)}MB`}
                     >
                       {process.gpu_memory > 4096 && (
                         <span 
@@ -1708,8 +1851,8 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                         >💾</span>
                       )}
                       {process.gpu_memory < 1024 
-                        ? `${process.gpu_memory.toFixed(0)}MB`
-                        : `${(process.gpu_memory / 1024).toFixed(1)}GB`
+                        ? `${safeToFixed(process.gpu_memory, 0)}MB`
+                        : `${safeToFixed(process.gpu_memory / 1024, 1)}GB`
                       }
                     </div>
                     <div 
@@ -2690,6 +2833,15 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
       {/* Confirmation Dialog */}
       {ConfirmComponent}
     </>
+  );
+};
+
+// Main component with Error Boundary
+const GpuProcessWidget: React.FC<WidgetProps> = (props) => {
+  return (
+    <GPUProcessErrorBoundary widgetId={props.widgetId}>
+      <GpuProcessWidgetContent {...props} />
+    </GPUProcessErrorBoundary>
   );
 };
 
