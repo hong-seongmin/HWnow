@@ -21,6 +21,7 @@ import { ContextMenu } from '../common/ContextMenu';
 import { WidgetFullscreen } from '../common/WidgetModal';
 import { useWidgetZoom } from '../../hooks/useWidgetZoom';
 import { useToast } from '../../contexts/ToastContext';
+import { WailsEventService } from '../../services/wailsEventService';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import './Dashboard.css';
@@ -124,6 +125,21 @@ const Dashboard = () => {
       actions.initialize();
     }
   }, [isInitialized, actions]);
+
+  // Track active widgets and optimize polling
+  useEffect(() => {
+    const eventService = WailsEventService.getInstance();
+    
+    if (widgets && widgets.length > 0) {
+      const activeWidgetTypes: WidgetType[] = widgets.map(w => w.type);
+      console.log('[Dashboard] Active widgets changed:', activeWidgetTypes);
+      eventService.updateActiveWidgets(activeWidgetTypes);
+    } else {
+      // No widgets - stop all unnecessary polling
+      console.log('[Dashboard] No widgets active, optimizing polling');
+      eventService.updateActiveWidgets([]);
+    }
+  }, [widgets]);
 
   // 스크롤 끝 감지 및 동적 여백 추가
   const handleScroll = useCallback(() => {
