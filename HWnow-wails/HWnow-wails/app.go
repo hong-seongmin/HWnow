@@ -64,7 +64,11 @@ type RealTimeMetrics struct {
 	CPUUsage       float64                     `json:"cpu_usage"`
 	MemoryUsage    float64                     `json:"memory_usage"`
 	DiskUsage      *monitoring.DiskUsageInfo   `json:"disk_usage"`
+	DiskReadSpeed  float64                     `json:"disk_read_speed"`
+	DiskWriteSpeed float64                     `json:"disk_write_speed"`
 	NetworkIO      []monitoring.NetworkInterface `json:"network_io"`
+	NetSentSpeed   float64                     `json:"net_sent_speed"`
+	NetRecvSpeed   float64                     `json:"net_recv_speed"`
 	Timestamp      time.Time                   `json:"timestamp"`
 }
 
@@ -143,14 +147,40 @@ func (a *App) OnStartup(ctx context.Context) {
 	// Set security cache duration
 	monitoring.SetCacheDuration(time.Duration(config.Monitoring.SecurityCheckSeconds) * time.Second)
 	
+	// Initialize database service first (required for widget persistence)
+	if err := a.databaseService.Initialize(); err != nil {
+		monitoring.LogError("Failed to initialize database service", "error", err)
+		return // Cannot continue without database
+	}
+	monitoring.LogInfo("Database service initialized successfully during startup")
+	
 	// Initialize native UI service
 	if err := a.nativeUI.Initialize(ctx); err != nil {
 		monitoring.LogError("Failed to initialize native UI service", "error", err)
+	}
+	
+	// Auto-start monitoring service after database is ready
+	monitoring.LogInfo("Starting monitoring service with configuration", 
+		"cpu_enabled", config.Monitoring.EnableCpuMonitoring,
+		"memory_enabled", config.Monitoring.EnableMemoryMonitoring,
+		"disk_enabled", config.Monitoring.EnableDiskMonitoring,
+		"network_enabled", config.Monitoring.EnableNetworkMonitoring)
+	
+	if err := a.StartMonitoring(); err != nil {
+		monitoring.LogError("Failed to auto-start monitoring service", "error", err)
+		// Continue execution even if monitoring fails
+	} else {
+		monitoring.LogInfo("Monitoring service auto-started successfully")
 	}
 }
 
 // OnShutdown is called when the app is shutting down
 func (a *App) OnShutdown(ctx context.Context) {
+	// Stop monitoring service
+	if err := a.StopMonitoring(); err != nil {
+		monitoring.LogError("Failed to stop monitoring service during shutdown", "error", err)
+	}
+	
 	// Clean up native UI resources
 	if a.nativeUI != nil {
 		a.nativeUI.Cleanup()
@@ -326,12 +356,30 @@ func (a *App) GetRealTimeMetrics() (*RealTimeMetrics, error) {
 		networkIO = []monitoring.NetworkInterface{}
 	}
 	
+	// Disk I/O 속도 - 안전한 기본값 처리
+	diskReadSpeed, diskWriteSpeed, err := monitoring.GetDiskIOSpeed()
+	if err != nil {
+		monitoring.LogWarn("Failed to get disk I/O speed", "error", err)
+		diskReadSpeed, diskWriteSpeed = 0.0, 0.0
+	}
+	
+	// Network I/O 속도 - 안전한 기본값 처리
+	netSentSpeed, netRecvSpeed, err := monitoring.GetNetworkIOSpeed()
+	if err != nil {
+		monitoring.LogWarn("Failed to get network I/O speed", "error", err)
+		netSentSpeed, netRecvSpeed = 0.0, 0.0
+	}
+	
 	metrics := &RealTimeMetrics{
-		CPUUsage:    cpuUsage,
-		MemoryUsage: memUsage,
-		DiskUsage:   diskUsage,
-		NetworkIO:   networkIO,
-		Timestamp:   timestamp,
+		CPUUsage:       cpuUsage,
+		MemoryUsage:    memUsage,
+		DiskUsage:      diskUsage,
+		DiskReadSpeed:  diskReadSpeed,
+		DiskWriteSpeed: diskWriteSpeed,
+		NetworkIO:      networkIO,
+		NetSentSpeed:   netSentSpeed,
+		NetRecvSpeed:   netRecvSpeed,
+		Timestamp:      timestamp,
 	}
 	
 	monitoring.LogDebug("Real-time metrics retrieved", 
@@ -415,7 +463,7 @@ func (a *App) IsMonitoringRunning() bool {
 	return a.monitoringService.IsRunning()
 }
 
-// Start starts the monitoring service
+// Start starts the monitoring service with actual data collection
 func (s *MonitoringService) Start() error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -425,12 +473,126 @@ func (s *MonitoringService) Start() error {
 		return nil // 이미 시작됨
 	}
 	
-	// 모니터링 로직 초기화
-	// 실제로는 고루틴으로 백그라운드 모니터링을 시작할 것임
+	monitoring.LogInfo("Starting background monitoring goroutines...")
+	
+	// Start background monitoring goroutines
+	go s.startSystemMonitoring()
+	go s.startProcessMonitoring()
+	go s.startGPUMonitoring()
+	go s.startNetworkMonitoring()
+	go s.startDiskMonitoring()
+	
 	s.isRunning = true
-	monitoring.LogInfo("Monitoring service started successfully")
+	monitoring.LogInfo("Monitoring service started successfully with background data collection")
 	
 	return nil
+}
+
+// startSystemMonitoring monitors CPU and memory usage
+func (s *MonitoringService) startSystemMonitoring() {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-ticker.C:
+			if !s.IsRunning() {
+				return
+			}
+			
+			// Collect CPU data
+			if cpuPercent, err := monitoring.GetCPUUsage(); err == nil {
+				monitoring.LogDebug("CPU usage collected", "value", cpuPercent)
+			}
+			
+			// Collect Memory data  
+			if memPercent, err := monitoring.GetMemoryUsage(); err == nil {
+				monitoring.LogDebug("Memory usage collected", "used_percent", memPercent)
+			}
+		}
+	}
+}
+
+// startProcessMonitoring monitors top processes
+func (s *MonitoringService) startProcessMonitoring() {
+	ticker := time.NewTicker(6 * time.Second) // Less frequent
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-ticker.C:
+			if !s.IsRunning() {
+				return
+			}
+			
+			if processes, err := monitoring.GetTopProcesses(10); err == nil {
+				monitoring.LogDebug("Process data collected", "count", len(processes))
+			}
+		}
+	}
+}
+
+// startGPUMonitoring monitors GPU usage and processes
+func (s *MonitoringService) startGPUMonitoring() {
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-ticker.C:
+			if !s.IsRunning() {
+				return
+			}
+			
+			// Collect GPU info
+			if gpuInfo, err := monitoring.GetGPUInfo(); err == nil && gpuInfo != nil {
+				monitoring.LogDebug("GPU info collected", "gpu_name", gpuInfo.Name)
+			}
+			
+			// Collect GPU processes
+			if gpuProcesses, err := monitoring.GetGPUProcesses(); err == nil {
+				monitoring.LogDebug("GPU processes collected", "count", len(gpuProcesses))
+			}
+		}
+	}
+}
+
+// startNetworkMonitoring monitors network interfaces and usage
+func (s *MonitoringService) startNetworkMonitoring() {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-ticker.C:
+			if !s.IsRunning() {
+				return
+			}
+			
+			if interfaces, err := monitoring.GetNetworkInterfaces(); err == nil {
+				monitoring.LogDebug("Network interfaces collected", "count", len(interfaces))
+			}
+		}
+	}
+}
+
+// startDiskMonitoring monitors disk usage and I/O
+func (s *MonitoringService) startDiskMonitoring() {
+	ticker := time.NewTicker(5 * time.Second) // Less frequent for disk
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-ticker.C:
+			if !s.IsRunning() {
+				return
+			}
+			
+			if diskInfo, err := monitoring.GetDiskUsage(); err == nil {
+				monitoring.LogDebug("Disk usage collected", "used_percent", diskInfo.UsedPercent)
+			}
+		}
+	}
 }
 
 // Stop stops the monitoring service
@@ -443,7 +605,12 @@ func (s *MonitoringService) Stop() error {
 		return nil // 이미 중지됨
 	}
 	
+	monitoring.LogInfo("Stopping monitoring service and background goroutines...")
 	s.isRunning = false
+	
+	// Give goroutines time to exit gracefully
+	time.Sleep(100 * time.Millisecond)
+	
 	monitoring.LogInfo("Monitoring service stopped successfully")
 	
 	return nil
@@ -895,6 +1062,9 @@ func (a *App) SaveWidgets(userID, pageID string, widgets []map[string]interface{
 	
 	monitoring.LogInfo("Saving widgets", "userID", userID, "pageID", pageID, "count", len(widgets))
 	
+	// 저장 전 현재 데이터베이스 상태 검증 (디버깅용)
+	db.DebugWidgetStates(a.databaseService.db, userID)
+	
 	// 위젯 데이터를 데이터베이스 형태로 변환
 	widgetStates := make([]db.WidgetState, len(widgets))
 	for i, w := range widgets {
@@ -926,7 +1096,10 @@ func (a *App) SaveWidgets(userID, pageID string, widgets []map[string]interface{
 		}
 	}
 	
-	monitoring.LogInfo("Widgets saved successfully", "userID", userID, "pageID", pageID, "count", len(widgets))
+	monitoring.LogInfo("Widgets saved successfully from app layer", "userID", userID, "pageID", pageID, "count", len(widgets))
+	
+	// 저장 후 최종 데이터베이스 상태 검증 (디버깅용)
+	db.DebugWidgetStates(a.databaseService.db, userID)
 	
 	return &WidgetResult{
 		UserID:  userID,
@@ -982,6 +1155,9 @@ func (a *App) DeleteWidget(userID, pageID, widgetID string) *WidgetResult {
 	
 	monitoring.LogInfo("Deleting widget", "userID", userID, "pageID", pageID, "widgetID", widgetID)
 	
+	// 삭제 전 데이터베이스 상태 검증 (디버깅용)
+	db.DebugWidgetStates(a.databaseService.db, userID)
+	
 	// 데이터베이스에서 위젯 삭제
 	err := db.DeleteWidget(a.databaseService.db, userID, pageID, widgetID)
 	if err != nil {
@@ -996,7 +1172,10 @@ func (a *App) DeleteWidget(userID, pageID, widgetID string) *WidgetResult {
 		}
 	}
 	
-	monitoring.LogInfo("Widget deleted successfully", "userID", userID, "pageID", pageID, "widgetID", widgetID)
+	monitoring.LogInfo("Widget deleted successfully from app layer", "userID", userID, "pageID", pageID, "widgetID", widgetID)
+	
+	// 삭제 후 데이터베이스 상태 최종 검증 (디버깅용)
+	db.VerifyWidgetDeletion(a.databaseService.db, userID, pageID, widgetID)
 	
 	return &WidgetResult{
 		UserID:   userID,
