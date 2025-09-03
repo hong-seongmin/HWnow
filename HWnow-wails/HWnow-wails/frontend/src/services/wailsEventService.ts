@@ -604,10 +604,16 @@ export class WailsEventService {
   }
   
   private startTopProcessPolling(): void {
+    console.log('[WailsEvents] Starting top process polling...');
     this.clearPolling('top_processes');
     
     const pollTopProcesses = async () => {
-      if (!this.isRunning) return;
+      if (!this.isRunning) {
+        console.log('[WailsEvents] Polling stopped - service not running');
+        return;
+      }
+      
+      console.log('[WailsEvents] Executing top process polling...');
       
       try {
         const processes = await this.executeWithRetry(
@@ -617,11 +623,27 @@ export class WailsEventService {
         
         const { setData } = useSystemResourceStore.getState();
         
-        // Update process data
-        processes.forEach((process, index) => {
-          setData(`process_${index}`, process.cpu_usage, 
-                   `${process.name}|${process.pid}|${process.memory_mb}`);
+        console.log('[WailsEvents] Raw process data received:', processes);
+        
+        // Convert process data to match ProcessMonitorWidget expectations
+        // Backend Go struct uses: Name, PID, CPUPercent, MemoryPercent
+        // Frontend API interface uses: name, pid, cpu_usage, memory_usage  
+        const processData = processes.map(process => {
+          // Handle both possible field formats
+          const convertedProcess = {
+            Name: process.Name || process.name || 'Unknown',
+            PID: process.PID || process.pid || 0,
+            CPUPercent: process.CPUPercent || process.cpu_usage || 0,
+            MemoryPercent: process.MemoryPercent || process.memory_usage || 0
+          };
+          console.log('[WailsEvents] Converted process:', convertedProcess);
+          return convertedProcess;
         });
+        
+        console.log('[WailsEvents] Final processData to store:', processData);
+        
+        // Store as top_processes array for ProcessMonitorWidget
+        setData('top_processes', processData);
         
       } catch (error) {
         this.handlePollingError('top_processes', error);
@@ -631,8 +653,10 @@ export class WailsEventService {
     // Process polling - moderate frequency
     const intervalId = setInterval(pollTopProcesses, this.config.pollingInterval * 3); // Every 6 seconds
     this.pollingIntervals.set('top_processes', intervalId);
+    console.log('[WailsEvents] Top process polling interval set - every', this.config.pollingInterval * 3, 'ms');
     
     // Initial call
+    console.log('[WailsEvents] Making initial top process polling call...');
     pollTopProcesses();
   }
   
@@ -814,6 +838,12 @@ export class WailsEventService {
     const needsGPUProcesses = this.activeWidgets.has('gpu_process');
     const needsTopProcesses = this.activeWidgets.has('process_monitor');
     
+    console.log('[WailsEvents] Active widgets check:', {
+      activeWidgets: Array.from(this.activeWidgets),
+      needsTopProcesses,
+      hasProcessMonitor: this.activeWidgets.has('process_monitor')
+    });
+    
     // Only start polling for data that is actually needed
     if (needsSystemInfo) {
       this.startSystemInfoPolling();
@@ -832,7 +862,10 @@ export class WailsEventService {
     }
     
     if (needsTopProcesses) {
+      console.log('[WailsEvents] Starting top processes polling due to process_monitor widget');
       this.startTopProcessPolling();
+    } else {
+      console.log('[WailsEvents] Skipping top processes polling - no process_monitor widgets found');
     }
     
     console.log(`[WailsEvents] Started optimized polling jobs - SystemInfo:${needsSystemInfo}, RealTime:${needsRealTimeMetrics}, GPU:${needsGPUInfo}, GPUProc:${needsGPUProcesses}, TopProc:${needsTopProcesses}`);

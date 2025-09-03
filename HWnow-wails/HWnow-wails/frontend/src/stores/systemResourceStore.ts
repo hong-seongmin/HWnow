@@ -253,6 +253,17 @@ export const useSystemResourceStore = create<SystemResourceState>((set) => ({
         };
       }
       
+      // Handle top_processes array data (special case - store as array directly)
+      if (type === 'top_processes') {
+        console.log('[SystemResourceStore] Storing top_processes data:', Array.isArray(value) ? `${value.length} processes` : 'invalid data', value);
+        return {
+          data: {
+            ...state.data,
+            top_processes: Array.isArray(value) ? value : [],
+          },
+        };
+      }
+      
       // Handle regular data types
       const currentData = (state.data as any)[type] || [];
       const newData = [...currentData, value].slice(-state.maxDataPoints);

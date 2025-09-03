@@ -61,10 +61,10 @@ class ProcessMonitorErrorBoundary extends React.Component<
 
 // Data validation utility functions
 interface ProcessData {
-  name: string;
-  pid: number;
-  cpu: number;
-  memory: number;
+  Name: string;
+  PID: number;
+  CPUPercent: number;
+  MemoryPercent: number;
 }
 
 const isValidNumber = (value: unknown): value is number => {
@@ -76,10 +76,10 @@ const isValidProcess = (process: unknown): process is ProcessData => {
   
   const p = process as any;
   return (
-    typeof p.name === 'string' && p.name.length > 0 &&
-    isValidNumber(p.pid) && p.pid > 0 &&
-    isValidNumber(p.cpu) && p.cpu >= 0 &&
-    isValidNumber(p.memory) && p.memory >= 0
+    typeof p.Name === 'string' && p.Name.length > 0 &&
+    isValidNumber(p.PID) && p.PID > 0 &&
+    isValidNumber(p.CPUPercent) && p.CPUPercent >= 0 &&
+    isValidNumber(p.MemoryPercent) && p.MemoryPercent >= 0
   );
 };
 
@@ -90,8 +90,8 @@ const getSafeProcesses = (processes: unknown[]): ProcessData[] => {
     .filter(isValidProcess)
     .map(process => ({
       ...process,
-      cpu: Math.min(Math.max(process.cpu, 0), 999), // Cap CPU at 999%
-      memory: Math.min(Math.max(process.memory, 0), 100) // Cap memory at 100%
+      CPUPercent: Math.min(Math.max(process.CPUPercent, 0), 999), // Cap CPU at 999%
+      MemoryPercent: Math.min(Math.max(process.MemoryPercent, 0), 100) // Cap memory at 100%
     }));
 };
 
@@ -115,7 +115,7 @@ interface WidgetProps {
 const ProcessMonitorWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = false, onExpand }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const rawProcesses = useSystemResourceStore((state) => state.data.processes);
+  const rawProcesses = useSystemResourceStore((state) => state.data.top_processes);
   
   // Safe process data extraction
   const processes = getSafeProcesses(rawProcesses);
@@ -165,18 +165,18 @@ const ProcessMonitorWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove
     try {
       const sorted = [...processes].sort((a, b) => {
         if (sortBy === 'cpu') {
-          const aVal = isValidNumber(a.cpu) ? a.cpu : 0;
-          const bVal = isValidNumber(b.cpu) ? b.cpu : 0;
+          const aVal = isValidNumber(a.CPUPercent) ? a.CPUPercent : 0;
+          const bVal = isValidNumber(b.CPUPercent) ? b.CPUPercent : 0;
           return bVal - aVal;
         }
         if (sortBy === 'memory') {
-          const aVal = isValidNumber(a.memory) ? a.memory : 0;
-          const bVal = isValidNumber(b.memory) ? b.memory : 0;
+          const aVal = isValidNumber(a.MemoryPercent) ? a.MemoryPercent : 0;
+          const bVal = isValidNumber(b.MemoryPercent) ? b.MemoryPercent : 0;
           return bVal - aVal;
         }
         if (sortBy === 'name') {
-          const aName = typeof a.name === 'string' ? a.name : '';
-          const bName = typeof b.name === 'string' ? b.name : '';
+          const aName = typeof a.Name === 'string' ? a.Name : '';
+          const bName = typeof b.Name === 'string' ? b.Name : '';
           return aName.localeCompare(bName);
         }
         return 0;
@@ -200,13 +200,13 @@ const ProcessMonitorWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove
     setIsSettingsOpen(false);
   };
 
-  const formatProcessName = (name: string) => {
+  const formatProcessName = (Name: string) => {
     try {
-      if (typeof name !== 'string') return 'Unknown';
-      if (name.length > 20) {
-        return name.substring(0, 17) + '...';
+      if (typeof Name !== 'string') return 'Unknown';
+      if (Name.length > 20) {
+        return Name.substring(0, 17) + '...';
       }
-      return name;
+      return Name;
     } catch (error) {
       console.warn('[ProcessMonitorWidget] Format name error:', error);
       return 'Unknown';
@@ -216,7 +216,7 @@ const ProcessMonitorWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove
   // Safe key generation for React
   const getSafeKey = (process: ProcessData, index: number): string => {
     try {
-      const pid = isValidNumber(process.pid) ? process.pid : index;
+      const pid = isValidNumber(process.PID) ? process.PID : index;
       return `process-${pid}-${index}`;
     } catch (error) {
       return `process-fallback-${index}`;
@@ -328,31 +328,31 @@ const ProcessMonitorWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove
                     </div>
                     {sortedProcesses.map((process, index) => (
                       <div key={getSafeKey(process, index)} className="process-item">
-                        <div className="process-name" title={process.name}>
-                          {formatProcessName(process.name)}
+                        <div className="process-name" title={process.Name}>
+                          {formatProcessName(process.Name)}
                         </div>
                         <div className="process-pid">
-                          {isValidNumber(process.pid) ? process.pid : 'N/A'}
+                          {isValidNumber(process.PID) ? process.PID : 'N/A'}
                         </div>
                         <div 
                           className="process-cpu"
                           style={{ 
-                            color: process.cpu > 50 ? 'var(--color-error)' : 
-                                   process.cpu > 25 ? 'var(--color-warning)' : 
+                            color: process.CPUPercent > 50 ? 'var(--color-error)' : 
+                                   process.CPUPercent > 25 ? 'var(--color-warning)' : 
                                    'var(--color-success)' 
                           }}
                         >
-                          {safeToFixed(process.cpu)}%
+                          {safeToFixed(process.CPUPercent)}%
                         </div>
                         <div 
                           className="process-memory"
                           style={{ 
-                            color: process.memory > 50 ? 'var(--color-error)' : 
-                                   process.memory > 25 ? 'var(--color-warning)' : 
+                            color: process.MemoryPercent > 50 ? 'var(--color-error)' : 
+                                   process.MemoryPercent > 25 ? 'var(--color-warning)' : 
                                    'var(--color-success)' 
                           }}
                         >
-                          {safeToFixed(process.memory)}%
+                          {safeToFixed(process.MemoryPercent)}%
                         </div>
                       </div>
                     ))}
