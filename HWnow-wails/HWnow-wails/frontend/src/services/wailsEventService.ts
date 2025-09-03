@@ -392,10 +392,10 @@ export class WailsEventService {
         
         // Update disk metrics
         if (metrics.disk_usage) {
-          setData('disk_total', metrics.disk_usage.total);
-          setData('disk_used', metrics.disk_usage.used);
-          setData('disk_free', metrics.disk_usage.free);
-          setData('disk_usage_percent', metrics.disk_usage.usedPercent);
+          setData('disk_total', metrics.disk_usage.Total);
+          setData('disk_used', metrics.disk_usage.Used);
+          setData('disk_free', metrics.disk_usage.Free);
+          setData('disk_usage_percent', metrics.disk_usage.UsedPercent);
         }
         
         // Update disk I/O speed metrics
@@ -409,8 +409,83 @@ export class WailsEventService {
         // Update network interfaces status
         if (metrics.network_io && Array.isArray(metrics.network_io)) {
           metrics.network_io.forEach((iface, index) => {
-            setData(`network_${iface.name}_status`, iface.status, iface.ipAddress);
+            setData(`network_${iface.Name}_status`, iface.Status, iface.IpAddress);
           });
+        }
+        
+        // Update new fields - real data only
+        if (metrics.system_uptime !== undefined) {
+          setData('system_uptime', metrics.system_uptime);
+        }
+        
+        if (metrics.boot_time) {
+          setData('boot_time', new Date(metrics.boot_time));
+        }
+        
+        // GPU info - only if real data available
+        if (metrics.gpu_info) {
+          console.log('[WailsEvents] RealTime GPU data received:', {
+            name: metrics.gpu_info.Name,
+            usage: metrics.gpu_info.Usage,
+            temperature: metrics.gpu_info.Temperature,
+            power: metrics.gpu_info.Power,
+            memory_total: metrics.gpu_info.MemoryTotal,
+            memory_used: metrics.gpu_info.MemoryUsed
+          });
+          
+          // Store GPU name both in gpu_name and gpu_info formats
+          setData('gpu_name', metrics.gpu_info.Name || 'Unknown GPU');
+          setData('gpu_info', 1, metrics.gpu_info.Name || 'Unknown GPU');
+          // Only set usage if real data is available (not -1)
+          if (metrics.gpu_info.Usage >= 0) {
+            setData('gpu_usage', metrics.gpu_info.Usage);
+          }
+          if (metrics.gpu_info.Temperature >= 0) {
+            setData('gpu_temperature', metrics.gpu_info.Temperature);
+          }
+          if (metrics.gpu_info.Power >= 0) {
+            setData('gpu_power', metrics.gpu_info.Power);
+          }
+          if (metrics.gpu_info.MemoryTotal >= 0) {
+            setData('gpu_memory_total', metrics.gpu_info.MemoryTotal);
+          }
+          if (metrics.gpu_info.MemoryUsed >= 0) {
+            setData('gpu_memory_used', metrics.gpu_info.MemoryUsed);
+          }
+        } else {
+          console.log('[WailsEvents] No GPU info in RealTime metrics');
+        }
+        
+        // GPU processes - only if available
+        if (metrics.gpu_processes && Array.isArray(metrics.gpu_processes)) {
+          console.log('[WailsEvents] RealTime GPU processes received:', metrics.gpu_processes.length, 'processes');
+          const { setGPUProcesses } = useSystemResourceStore.getState();
+          setGPUProcesses(metrics.gpu_processes);
+        } else {
+          console.log('[WailsEvents] No GPU processes in RealTime metrics');
+        }
+        
+        // Top processes - only if available
+        if (metrics.top_processes && Array.isArray(metrics.top_processes)) {
+          setData('top_processes', metrics.top_processes);
+        }
+        
+        // Memory details - only if available
+        if (metrics.memory_details) {
+          setData('memory_physical', metrics.memory_details.Physical);
+          setData('memory_virtual', metrics.memory_details.Virtual);
+          setData('memory_swap', metrics.memory_details.Swap);
+        }
+        
+        // Battery info - only if available (desktop PCs won't have this)
+        if (metrics.battery_info) {
+          setData('battery_percent', metrics.battery_info.Percent);
+          setData('battery_plugged', metrics.battery_info.Plugged);
+        }
+        
+        // Network status - always available
+        if (metrics.network_status) {
+          setData('network_status', metrics.network_status);
         }
         
         // Track performance
@@ -444,14 +519,24 @@ export class WailsEventService {
         
         const { setData } = useSystemResourceStore.getState();
         
-        // Update GPU metrics
-        setData('gpu_usage', gpuInfo.usage);
-        setData('gpu_memory_used', gpuInfo.memory_used);
-        setData('gpu_memory_total', gpuInfo.memory_total);
-        setData('gpu_temperature', gpuInfo.temperature);
+        // Update GPU metrics (using correct field names from Go structs)
+        setData('gpu_usage', gpuInfo.Usage);
+        setData('gpu_memory_used', gpuInfo.MemoryUsed);
+        setData('gpu_memory_total', gpuInfo.MemoryTotal);
+        setData('gpu_temperature', gpuInfo.Temperature);
+        setData('gpu_power', gpuInfo.Power);
         
         // GPU info with device name
-        setData('gpu_info', 1, gpuInfo.name);
+        setData('gpu_info', 1, gpuInfo.Name);
+        
+        console.log('[WailsEvents] GPU data processed:', {
+          name: gpuInfo.Name,
+          usage: gpuInfo.Usage,
+          memory_used: gpuInfo.MemoryUsed,
+          memory_total: gpuInfo.MemoryTotal,
+          temperature: gpuInfo.Temperature,
+          power: gpuInfo.Power
+        });
         
       } catch (error) {
         // GPU might not be available, handle gracefully

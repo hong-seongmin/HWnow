@@ -13,6 +13,7 @@ export type SystemResourceData = {
   
   // 새로운 데이터 타입들
   system_uptime: number[];
+  boot_time: Date[];
   disk_total: number[];
   disk_used: number[];
   disk_free: number[];
@@ -22,12 +23,22 @@ export type SystemResourceData = {
   memory_swap: number[];
   battery_percent: number[];
   battery_plugged: number[];
+  network_status: string[];
+  gpu_name: string[];
   
   // 네트워크 상태 (인터페이스별)
   network_interfaces: { [key: string]: { status: number[]; ip: string } };
   
   // 프로세스 정보 (최신 상태만 저장)
   processes: Array<{
+    name: string;
+    pid: number;
+    cpu: number;
+    memory: number;
+  }>;
+  
+  // Top 프로세스 정보 (최신 상태만 저장)
+  top_processes: Array<{
     name: string;
     pid: number;
     cpu: number;
@@ -74,6 +85,7 @@ const initialState: SystemResourceData = {
   
   // 새로운 데이터 타입들
   system_uptime: [],
+  boot_time: [],
   disk_total: [],
   disk_used: [],
   disk_free: [],
@@ -83,12 +95,17 @@ const initialState: SystemResourceData = {
   memory_swap: [],
   battery_percent: [],
   battery_plugged: [],
+  network_status: [],
+  gpu_name: [],
   
   // 네트워크 상태
   network_interfaces: {},
   
   // 프로세스 정보
   processes: [],
+  
+  // Top 프로세스 정보
+  top_processes: [],
   
   // GPU 프로세스 정보
   gpu_processes: [],
