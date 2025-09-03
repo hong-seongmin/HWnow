@@ -69,6 +69,15 @@ export namespace main {
 	    network_io: monitoring.NetworkInterface[];
 	    net_sent_speed: number;
 	    net_recv_speed: number;
+	    system_uptime: number;
+	    // Go type: time
+	    boot_time: any;
+	    gpu_info?: monitoring.GPUInfo;
+	    gpu_processes: monitoring.GPUProcess[];
+	    top_processes: monitoring.ProcessInfo[];
+	    memory_details?: monitoring.MemoryDetails;
+	    battery_info?: monitoring.BatteryInfo;
+	    network_status: string;
 	    // Go type: time
 	    timestamp: any;
 	
@@ -86,6 +95,14 @@ export namespace main {
 	        this.network_io = this.convertValues(source["network_io"], monitoring.NetworkInterface);
 	        this.net_sent_speed = source["net_sent_speed"];
 	        this.net_recv_speed = source["net_recv_speed"];
+	        this.system_uptime = source["system_uptime"];
+	        this.boot_time = this.convertValues(source["boot_time"], null);
+	        this.gpu_info = this.convertValues(source["gpu_info"], monitoring.GPUInfo);
+	        this.gpu_processes = this.convertValues(source["gpu_processes"], monitoring.GPUProcess);
+	        this.top_processes = this.convertValues(source["top_processes"], monitoring.ProcessInfo);
+	        this.memory_details = this.convertValues(source["memory_details"], monitoring.MemoryDetails);
+	        this.battery_info = this.convertValues(source["battery_info"], monitoring.BatteryInfo);
+	        this.network_status = source["network_status"];
 	        this.timestamp = this.convertValues(source["timestamp"], null);
 	    }
 	
@@ -173,6 +190,20 @@ export namespace main {
 
 export namespace monitoring {
 	
+	export class BatteryInfo {
+	    Percent: number;
+	    Plugged: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new BatteryInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Percent = source["Percent"];
+	        this.Plugged = source["Plugged"];
+	    }
+	}
 	export class DiskUsageInfo {
 	    Total: number;
 	    Used: number;
@@ -235,6 +266,22 @@ export namespace monitoring {
 	        this.type = source["type"];
 	        this.command = source["command"];
 	        this.status = source["status"];
+	    }
+	}
+	export class MemoryDetails {
+	    Physical: number;
+	    Virtual: number;
+	    Swap: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new MemoryDetails(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Physical = source["Physical"];
+	        this.Virtual = source["Virtual"];
+	        this.Swap = source["Swap"];
 	    }
 	}
 	export class NetworkInterface {

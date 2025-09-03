@@ -61,15 +61,26 @@ type SystemInfo struct {
 
 // RealTimeMetrics represents real-time system metrics
 type RealTimeMetrics struct {
-	CPUUsage       float64                     `json:"cpu_usage"`
-	MemoryUsage    float64                     `json:"memory_usage"`
-	DiskUsage      *monitoring.DiskUsageInfo   `json:"disk_usage"`
-	DiskReadSpeed  float64                     `json:"disk_read_speed"`
-	DiskWriteSpeed float64                     `json:"disk_write_speed"`
+	CPUUsage       float64                      `json:"cpu_usage"`
+	MemoryUsage    float64                      `json:"memory_usage"`
+	DiskUsage      *monitoring.DiskUsageInfo    `json:"disk_usage"`
+	DiskReadSpeed  float64                      `json:"disk_read_speed"`
+	DiskWriteSpeed float64                      `json:"disk_write_speed"`
 	NetworkIO      []monitoring.NetworkInterface `json:"network_io"`
-	NetSentSpeed   float64                     `json:"net_sent_speed"`
-	NetRecvSpeed   float64                     `json:"net_recv_speed"`
-	Timestamp      time.Time                   `json:"timestamp"`
+	NetSentSpeed   float64                      `json:"net_sent_speed"`
+	NetRecvSpeed   float64                      `json:"net_recv_speed"`
+	
+	// 새로 추가된 필드들 - 실제 시스템 정보만 제공
+	SystemUptime   int64                        `json:"system_uptime"`    // 시스템 업타임 (초)
+	BootTime       time.Time                    `json:"boot_time"`        // 시스템 부팅 시간
+	GPUInfo        *monitoring.GPUInfo          `json:"gpu_info"`         // GPU 정보 (실제 데이터만)
+	GPUProcesses   []monitoring.GPUProcess      `json:"gpu_processes"`    // GPU 프로세스 목록
+	TopProcesses   []monitoring.ProcessInfo     `json:"top_processes"`    // Top 프로세스 목록
+	MemoryDetails  *monitoring.MemoryDetails    `json:"memory_details"`   // 메모리 상세 정보
+	BatteryInfo    *monitoring.BatteryInfo      `json:"battery_info"`     // 배터리 정보 (실제 데이터만)
+	NetworkStatus  string                       `json:"network_status"`   // 네트워크 연결 상태
+	
+	Timestamp      time.Time                    `json:"timestamp"`
 }
 
 // GPUProcessControlResult represents the result of GPU process control operations
@@ -369,6 +380,61 @@ func (a *App) GetRealTimeMetrics() (*RealTimeMetrics, error) {
 		monitoring.LogWarn("Failed to get network I/O speed", "error", err)
 		netSentSpeed, netRecvSpeed = 0.0, 0.0
 	}
+
+	// 새로운 필드들 수집 - 실제 데이터만 제공
+	systemUptime, err := monitoring.GetSystemUptime()
+	if err != nil {
+		monitoring.LogWarn("Failed to get system uptime", "error", err)
+		systemUptime = 0
+	}
+
+	bootTime, err := monitoring.GetBootTime()
+	if err != nil {
+		monitoring.LogWarn("Failed to get boot time", "error", err)
+		bootTime = time.Time{}
+	}
+
+	// GPU 정보 - 실제 데이터만, 실패 시 nil
+	gpuInfo, err := monitoring.GetGPUInfo()
+	if err != nil {
+		monitoring.LogWarn("GPU information not available", "error", err)
+		gpuInfo = nil // 실제 데이터 없으면 nil
+	}
+
+	// GPU 프로세스 - 실제 데이터만
+	gpuProcesses, err := monitoring.GetGPUProcesses()
+	if err != nil {
+		monitoring.LogWarn("GPU processes not available", "error", err)
+		gpuProcesses = nil
+	}
+
+	// Top 프로세스 (상위 10개)
+	topProcesses, err := monitoring.GetTopProcesses(10)
+	if err != nil {
+		monitoring.LogWarn("Top processes not available", "error", err)
+		topProcesses = nil
+	}
+
+	// 메모리 상세 정보
+	memoryDetails, err := monitoring.GetMemoryDetails()
+	if err != nil {
+		monitoring.LogWarn("Memory details not available", "error", err)
+		memoryDetails = nil
+	}
+
+	// 배터리 정보 - 실제 데이터만
+	batteryInfo, err := monitoring.GetBatteryInfo()
+	if err != nil {
+		monitoring.LogWarn("Battery information not available", "error", err)
+		batteryInfo = nil // 배터리 없는 시스템에서는 nil
+	}
+
+	// 네트워크 상태
+	networkStatus, err := monitoring.GetNetworkStatus()
+	if err != nil {
+		monitoring.LogWarn("Network status not available", "error", err)
+		networkStatus = "unknown"
+	}
 	
 	metrics := &RealTimeMetrics{
 		CPUUsage:       cpuUsage,
@@ -379,6 +445,17 @@ func (a *App) GetRealTimeMetrics() (*RealTimeMetrics, error) {
 		NetworkIO:      networkIO,
 		NetSentSpeed:   netSentSpeed,
 		NetRecvSpeed:   netRecvSpeed,
+		
+		// 새로 추가된 필드들
+		SystemUptime:   systemUptime,
+		BootTime:       bootTime,
+		GPUInfo:        gpuInfo,
+		GPUProcesses:   gpuProcesses,
+		TopProcesses:   topProcesses,
+		MemoryDetails:  memoryDetails,
+		BatteryInfo:    batteryInfo,
+		NetworkStatus:  networkStatus,
+		
 		Timestamp:      timestamp,
 	}
 	

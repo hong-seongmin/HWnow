@@ -366,7 +366,7 @@ func Start(wsChan chan<- *ResourceSnapshot, dbChan chan<- *ResourceSnapshot) {
 
 		// Battery Status - 에러가 있어도 기본값 전송
 		if runtime.GOOS == "windows" || runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
-			batteryStatus, err := getBatteryStatus()
+			batteryStatus, err := GetBatteryInfo()
 			if err != nil {
 				log.Printf("Error getting battery status: %v", err)
 				// 배터리가 없거나 에러 상황에서도 기본값 전송
@@ -758,23 +758,60 @@ func getTopProcesses(count int) ([]ProcessInfo, error) {
 	return processInfos, nil
 }
 
-func getBatteryStatus() (*BatteryInfo, error) {
-	// 기본적으로 gopsutil은 배터리 정보를 완전히 지원하지 않으므로
-	// 플랫폼별 구현이 필요하지만, 일단 기본 구조만 제공
-	// 실제 배터리 정보를 얻기 위해서는 추가 라이브러리나 OS별 구현이 필요
+// GetBatteryInfo returns real battery information from the system
+func GetBatteryInfo() (*BatteryInfo, error) {
+	switch runtime.GOOS {
+	case "windows":
+		return getBatteryStatusWindows()
+	default:
+		return nil, fmt.Errorf("battery monitoring not supported on platform: %s", runtime.GOOS)
+	}
+}
+
+func getBatteryStatusWindows() (*BatteryInfo, error) {
+	// WMI를 사용하여 실제 배터리 정보 조회
+	cmd := createHiddenCommand("wmic", "path", "Win32_Battery", "get", "EstimatedChargeRemaining,BatteryStatus", "/format:csv")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get battery info via WMI: %v", err)
+	}
+
+	lines := strings.Split(string(output), "\n")
+	var batteryPercent float64 = -1
+	var batteryStatus float64 = -1
 	
-	// 모의 배터리 데이터 (실제로는 OS별 API를 호출해야 함)
-	batteryPercent := 75.0 // 기본값
-	isPlugged := 1.0      // 기본값 (플러그인 상태)
-	
-	// 간단한 시뮬레이션 - 시간에 따라 배터리 상태 변화
-	if runtime.GOOS == "windows" {
-		// Windows에서는 WMI를 사용하여 실제 배터리 정보를 얻을 수 있음
-		// 하지만 현재는 모의 데이터 사용
-		batteryPercent = 60.0 + (float64(time.Now().Unix()%60) / 60.0) * 40.0
-		if time.Now().Unix()%2 == 0 {
-			isPlugged = 0.0 // 배터리 사용 중
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.Contains(line, "BatteryStatus,EstimatedChargeRemaining,Node") {
+			continue
 		}
+		
+		// CSV format: BatteryStatus,EstimatedChargeRemaining,Node
+		fields := strings.Split(line, ",")
+		if len(fields) >= 2 {
+			// BatteryStatus: 1=Discharging, 2=AC Power, 3=Fully Charged, etc.
+			if status, err := strconv.ParseFloat(strings.TrimSpace(fields[0]), 64); err == nil {
+				batteryStatus = status
+			}
+			
+			// EstimatedChargeRemaining: 0-100 percentage
+			if percent, err := strconv.ParseFloat(strings.TrimSpace(fields[1]), 64); err == nil {
+				batteryPercent = percent
+			}
+			break
+		}
+	}
+	
+	// 배터리가 없는 경우 (데스크탑 등)
+	if batteryPercent == -1 {
+		return nil, fmt.Errorf("no battery detected on this system")
+	}
+	
+	// BatteryStatus 값을 플러그인 상태로 변환
+	// 2 = AC Power (plugged), 1 = Discharging (not plugged)
+	isPlugged := 0.0
+	if batteryStatus == 2 || batteryStatus == 3 { // AC Power or Fully Charged
+		isPlugged = 1.0
 	}
 	
 	return &BatteryInfo{
@@ -797,83 +834,97 @@ func getGPUInfo() (*GPUInfo, error) {
 }
 
 func getGPUInfoWindows() (*GPUInfo, error) {
-	// 먼저 NVIDIA GPU 확인 - nvidia-smi가 더 정확함
-	if nvInfo, err := getNVIDIAInfo(); err == nil {
-		log.Printf("NVIDIA GPU detected: %s, Usage: %.1f%%, Memory: %.0f/%.0fMB, Temp: %.1f°C, Power: %.1fW", 
-			nvInfo.Name, nvInfo.Usage, nvInfo.MemoryUsed, nvInfo.MemoryTotal, nvInfo.Temperature, nvInfo.Power)
+	LogDebug("Starting Windows GPU detection")
+	
+	// 1단계: NVIDIA GPU 감지 시도
+	if nvInfo, err := detectNVIDIAGPU(); err == nil {
+		LogInfo("NVIDIA GPU detected", "name", nvInfo.Name, "usage", nvInfo.Usage)
 		return nvInfo, nil
+	} else {
+		LogDebug("NVIDIA GPU detection failed", "error", err)
 	}
-
-	// nvidia-smi 실패시 WMI 사용
-	log.Printf("nvidia-smi failed, trying WMI...")
-	cmd := createHiddenCommand("wmic", "path", "win32_VideoController", "get", "Name,AdapterRAM", "/format:csv")
-	output, err := cmd.Output()
-	if err != nil {
-		log.Printf("Error running wmic for GPU info: %v", err)
-		return getGPUInfoGeneric()
+	
+	// 2단계: AMD GPU 감지 시도  
+	if amdInfo, err := detectAMDGPUWindows(); err == nil {
+		LogInfo("AMD GPU detected", "name", amdInfo.Name)
+		return amdInfo, nil
+	} else {
+		LogDebug("AMD GPU detection failed", "error", err)
 	}
-
-	lines := strings.Split(string(output), "\n")
-	var gpuName string
-	var memoryTotal float64
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.Contains(line, "Node,AdapterRAM,Name") {
-			continue
-		}
-		
-		fields := strings.Split(line, ",")
-		if len(fields) >= 3 {
-			// CSV 형식: Node,AdapterRAM,Name
-			memStr := strings.TrimSpace(fields[1])
-			nameStr := strings.TrimSpace(fields[2])
-			
-			// Microsoft나 Virtual 어댑터 제외
-			if nameStr != "" && !strings.Contains(nameStr, "Microsoft") && !strings.Contains(nameStr, "Virtual") {
-				gpuName = nameStr
-				if memStr != "" && memStr != "0" {
-					if mem, err := strconv.ParseFloat(memStr, 64); err == nil {
-						memoryTotal = mem / (1024 * 1024) // 바이트를 MB로 변환
-					}
-				}
-				log.Printf("Found GPU via WMI: %s, Memory: %.0fMB", gpuName, memoryTotal)
-				break
-			}
-		}
+	
+	// 3단계: Intel GPU 감지 시도
+	if intelInfo, err := detectIntelGPUWindows(); err == nil {
+		LogInfo("Intel GPU detected", "name", intelInfo.Name)
+		return intelInfo, nil
+	} else {
+		LogDebug("Intel GPU detection failed", "error", err)
 	}
-
-	// 기본 정보만 반환
-	if gpuName == "" {
-		gpuName = "Unknown GPU"
+	
+	// 4단계: WMI 기반 일반 GPU 감지
+	if wmiInfo, err := detectGPUViaWMI(); err == nil {
+		LogInfo("GPU detected via WMI", "name", wmiInfo.Name)
+		return wmiInfo, nil
+	} else {
+		LogDebug("WMI GPU detection failed", "error", err)
 	}
-	if memoryTotal == 0 {
-		memoryTotal = 8192 // 기본값 8GB
-	}
-
-	return &GPUInfo{
-		Name:         gpuName,
-		Usage:        float64(time.Now().Unix()%100),      // 모의 사용률
-		MemoryUsed:   memoryTotal * 0.3,                   // 모의 메모리 사용량 (30%)
-		MemoryTotal:  memoryTotal,
-		Temperature:  65.0 + float64(time.Now().Unix()%20), // 모의 온도 65-85°C
-		Power:        150.0 + float64(time.Now().Unix()%100), // 모의 전력 150-250W
-	}, nil
+	
+	// 5단계: 모든 방법 실패 시 기본값
+	LogWarn("All GPU detection methods failed, returning default info")
+	return getGPUInfoGeneric()
 }
 
 func getGPUInfoLinux() (*GPUInfo, error) {
 	// NVIDIA GPU 확인
-	if nvInfo, err := getNVIDIAInfo(); err == nil {
+	if nvInfo, err := detectNVIDIAGPU(); err == nil {
 		return nvInfo, nil
 	}
 
 	// AMD GPU 확인 (radeontop 또는 /sys/class/drm)
-	if amdInfo, err := getAMDInfo(); err == nil {
+	if amdInfo, err := getAMDInfoLinux(); err == nil {
 		return amdInfo, nil
 	}
 
 	// 일반적인 GPU 정보 수집
 	return getGPUInfoGeneric()
+}
+
+// getAMDInfoLinux - Linux에서 AMD GPU 정보 수집
+func getAMDInfoLinux() (*GPUInfo, error) {
+	// AMD GPU 정보 수집 (Linux의 경우)
+	// /sys/class/drm/card*/device/ 경로에서 정보 수집
+	cmd := createHiddenCommand("lspci", "-v")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("lspci not available: %v", err)
+	}
+
+	lines := strings.Split(string(output), "\n")
+	var gpuName string
+	
+	for _, line := range lines {
+		if strings.Contains(strings.ToLower(line), "vga") && strings.Contains(strings.ToLower(line), "amd") {
+			parts := strings.Split(line, ":")
+			if len(parts) > 2 {
+				gpuName = strings.TrimSpace(parts[2])
+			}
+			break
+		}
+	}
+
+	if gpuName == "" {
+		return nil, fmt.Errorf("AMD GPU not found")
+	}
+
+	// AMD GPU 정보는 rocm-smi나 다른 전용 도구가 필요
+	// 실제 데이터가 없으면 -1로 표시
+	return &GPUInfo{
+		Name:         gpuName,
+		Usage:        -1.0, // rocm-smi 등의 도구 없이는 사용률 정보 없음
+		MemoryUsed:   -1.0, // 실시간 메모리 사용량 정보 없음
+		MemoryTotal:  -1.0, // AMD GPU 메모리 총량 정보 없음
+		Temperature:  -1.0, // 온도 정보 없음
+		Power:        -1.0, // 전력 정보 없음
+	}, nil
 }
 
 func getGPUInfoMacOS() (*GPUInfo, error) {
@@ -925,7 +976,24 @@ func getGPUInfoMacOS() (*GPUInfo, error) {
 	}, nil
 }
 
-func getNVIDIAInfo() (*GPUInfo, error) {
+// detectNVIDIAGPU - 범용 NVIDIA GPU 감지 (모든 방법 시도)
+func detectNVIDIAGPU() (*GPUInfo, error) {
+	// 방법 1: nvidia-smi 전체 정보 수집
+	if info, err := getNVIDIASMIInfo(); err == nil {
+		return info, nil
+	}
+	
+	// 방법 2: nvidia-ml-py 또는 NVML 직접 호출 (향후 확장)
+	// 방법 3: Windows 레지스트리에서 NVIDIA 드라이버 정보
+	if info, err := getNVIDIAFromRegistry(); err == nil {
+		return info, nil
+	}
+	
+	return nil, fmt.Errorf("no NVIDIA GPU detection method succeeded")
+}
+
+// getNVIDIASMIInfo - nvidia-smi를 통한 정보 수집 (기존 로직 개선)
+func getNVIDIASMIInfo() (*GPUInfo, error) {
 	// nvidia-smi 명령어 사용
 	cmd := createHiddenCommand("nvidia-smi", "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw", "--format=csv,noheader,nounits")
 	output, err := cmd.Output()
@@ -937,7 +1005,7 @@ func getNVIDIAInfo() (*GPUInfo, error) {
 	fields := strings.Split(line, ",")
 	
 	if len(fields) < 6 {
-		return nil, fmt.Errorf("unexpected nvidia-smi output format")
+		return nil, fmt.Errorf("unexpected nvidia-smi output format: %s", line)
 	}
 
 	name := strings.TrimSpace(fields[0])
@@ -947,6 +1015,7 @@ func getNVIDIAInfo() (*GPUInfo, error) {
 	temp, _ := strconv.ParseFloat(strings.TrimSpace(fields[4]), 64)
 	power, _ := strconv.ParseFloat(strings.TrimSpace(fields[5]), 64)
 
+	LogDebug("NVIDIA GPU info collected via nvidia-smi", "name", name, "usage", usage)
 	return &GPUInfo{
 		Name:         name,
 		Usage:        usage,
@@ -957,52 +1026,283 @@ func getNVIDIAInfo() (*GPUInfo, error) {
 	}, nil
 }
 
-func getAMDInfo() (*GPUInfo, error) {
-	// AMD GPU 정보 수집 (Linux의 경우)
-	// /sys/class/drm/card*/device/ 경로에서 정보 수집
-	cmd := createHiddenCommand("lspci", "-v")
+// getNVIDIAFromRegistry - Windows 레지스트리에서 NVIDIA GPU 정보 수집
+func getNVIDIAFromRegistry() (*GPUInfo, error) {
+	// Windows 레지스트리에서 NVIDIA GPU 정보 수집 시도
+	cmd := createHiddenCommand("reg", "query", "HKLM\\SOFTWARE\\NVIDIA Corporation\\Global\\GPUInfo", "/s")
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("lspci not available: %v", err)
+		return nil, fmt.Errorf("NVIDIA registry info not available: %v", err)
 	}
-
+	
 	lines := strings.Split(string(output), "\n")
 	var gpuName string
 	
 	for _, line := range lines {
-		if strings.Contains(strings.ToLower(line), "vga") && strings.Contains(strings.ToLower(line), "amd") {
-			parts := strings.Split(line, ":")
-			if len(parts) > 2 {
-				gpuName = strings.TrimSpace(parts[2])
+		if strings.Contains(line, "GPUName") && strings.Contains(line, "REG_SZ") {
+			parts := strings.Split(line, "REG_SZ")
+			if len(parts) > 1 {
+				gpuName = strings.TrimSpace(parts[1])
+				break
 			}
-			break
 		}
 	}
-
+	
 	if gpuName == "" {
-		return nil, fmt.Errorf("AMD GPU not found")
+		return nil, fmt.Errorf("NVIDIA GPU name not found in registry")
 	}
-
+	
+	LogDebug("NVIDIA GPU info from registry", "name", gpuName)
 	return &GPUInfo{
 		Name:         gpuName,
-		Usage:        float64(time.Now().Unix()%100),
-		MemoryUsed:   4096 * 0.5, // 모의 메모리 사용량
-		MemoryTotal:  4096,       // 기본값 4GB
-		Temperature:  70.0 + float64(time.Now().Unix()%15),
-		Power:        120.0 + float64(time.Now().Unix()%80),
+		Usage:        -1.0, // 레지스트리에서는 실시간 사용률 불가
+		MemoryUsed:   -1.0,
+		MemoryTotal:  -1.0,
+		Temperature:  -1.0,
+		Power:        -1.0,
 	}, nil
 }
 
-func getGPUInfoGeneric() (*GPUInfo, error) {
-	// 일반적인 모의 GPU 정보
+// detectAMDGPUWindows - Windows에서 AMD GPU 감지
+func detectAMDGPUWindows() (*GPUInfo, error) {
+	// 방법 1: AMD 드라이버 레지스트리 확인
+	if info, err := getAMDFromRegistry(); err == nil {
+		return info, nil
+	}
+	
+	// 방법 2: WMI를 통한 AMD GPU 감지
+	if info, err := getAMDFromWMI(); err == nil {
+		return info, nil
+	}
+	
+	return nil, fmt.Errorf("no AMD GPU detection method succeeded")
+}
+
+// getAMDFromRegistry - Windows 레지스트리에서 AMD GPU 정보 수집
+func getAMDFromRegistry() (*GPUInfo, error) {
+	cmd := createHiddenCommand("reg", "query", "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}", "/s", "/f", "AMD")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("AMD registry query failed: %v", err)
+	}
+	
+	lines := strings.Split(string(output), "\n")
+	var gpuName string
+	
+	for _, line := range lines {
+		if strings.Contains(line, "DriverDesc") && strings.Contains(line, "REG_SZ") {
+			parts := strings.Split(line, "REG_SZ")
+			if len(parts) > 1 {
+				desc := strings.TrimSpace(parts[1])
+				if strings.Contains(strings.ToLower(desc), "amd") || strings.Contains(strings.ToLower(desc), "radeon") {
+					gpuName = desc
+					break
+				}
+			}
+		}
+	}
+	
+	if gpuName == "" {
+		return nil, fmt.Errorf("AMD GPU not found in registry")
+	}
+	
+	LogDebug("AMD GPU info from registry", "name", gpuName)
 	return &GPUInfo{
-		Name:         "Integrated Graphics",
-		Usage:        float64(time.Now().Unix()%100),
-		MemoryUsed:   2048 * 0.6, // 모의 메모리 사용량
-		MemoryTotal:  2048,       // 2GB
-		Temperature:  60.0 + float64(time.Now().Unix()%20),
-		Power:        25.0 + float64(time.Now().Unix()%25),
+		Name:         gpuName,
+		Usage:        -1.0, // 레지스트리에서는 사용률 정보 불가
+		MemoryUsed:   -1.0,
+		MemoryTotal:  -1.0,
+		Temperature:  -1.0,
+		Power:        -1.0,
 	}, nil
+}
+
+// getAMDFromWMI - WMI를 통한 AMD GPU 감지
+func getAMDFromWMI() (*GPUInfo, error) {
+	cmd := createHiddenCommand("wmic", "path", "win32_VideoController", "where", "Name like '%AMD%' OR Name like '%Radeon%'", "get", "Name,AdapterRAM", "/format:csv")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("AMD WMI query failed: %v", err)
+	}
+	
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.Contains(line, "AdapterRAM,Name") {
+			continue
+		}
+		
+		fields := strings.Split(line, ",")
+		if len(fields) >= 2 {
+			name := strings.TrimSpace(fields[1])
+			if name != "" && (strings.Contains(strings.ToLower(name), "amd") || strings.Contains(strings.ToLower(name), "radeon")) {
+				var memoryTotal float64
+				if memStr := strings.TrimSpace(fields[0]); memStr != "" && memStr != "0" {
+					if mem, err := strconv.ParseFloat(memStr, 64); err == nil {
+						memoryTotal = mem / (1024 * 1024) // Bytes to MB
+					}
+				}
+				
+				LogDebug("AMD GPU info from WMI", "name", name, "memory", memoryTotal)
+				return &GPUInfo{
+					Name:         name,
+					Usage:        -1.0, // WMI에서는 사용률 정보 불가
+					MemoryUsed:   -1.0,
+					MemoryTotal:  memoryTotal,
+					Temperature:  -1.0,
+					Power:        -1.0,
+				}, nil
+			}
+		}
+	}
+	
+	return nil, fmt.Errorf("AMD GPU not found via WMI")
+}
+
+// detectIntelGPUWindows - Windows에서 Intel GPU 감지
+func detectIntelGPUWindows() (*GPUInfo, error) {
+	// 방법 1: Intel Graphics Command Center 또는 드라이버 레지스트리 확인
+	if info, err := getIntelFromRegistry(); err == nil {
+		return info, nil
+	}
+	
+	// 방법 2: WMI를 통한 Intel GPU 감지
+	if info, err := getIntelFromWMI(); err == nil {
+		return info, nil
+	}
+	
+	return nil, fmt.Errorf("no Intel GPU detection method succeeded")
+}
+
+// getIntelFromRegistry - Windows 레지스트리에서 Intel GPU 정보 수집
+func getIntelFromRegistry() (*GPUInfo, error) {
+	cmd := createHiddenCommand("reg", "query", "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}", "/s", "/f", "Intel")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("Intel registry query failed: %v", err)
+	}
+	
+	lines := strings.Split(string(output), "\n")
+	var gpuName string
+	
+	for _, line := range lines {
+		if strings.Contains(line, "DriverDesc") && strings.Contains(line, "REG_SZ") {
+			parts := strings.Split(line, "REG_SZ")
+			if len(parts) > 1 {
+				desc := strings.TrimSpace(parts[1])
+				if strings.Contains(strings.ToLower(desc), "intel") {
+					gpuName = desc
+					break
+				}
+			}
+		}
+	}
+	
+	if gpuName == "" {
+		return nil, fmt.Errorf("Intel GPU not found in registry")
+	}
+	
+	LogDebug("Intel GPU info from registry", "name", gpuName)
+	return &GPUInfo{
+		Name:         gpuName,
+		Usage:        -1.0, // 레지스트리에서는 사용률 정보 불가
+		MemoryUsed:   -1.0,
+		MemoryTotal:  -1.0,
+		Temperature:  -1.0,
+		Power:        -1.0,
+	}, nil
+}
+
+// getIntelFromWMI - WMI를 통한 Intel GPU 감지
+func getIntelFromWMI() (*GPUInfo, error) {
+	cmd := createHiddenCommand("wmic", "path", "win32_VideoController", "where", "Name like '%Intel%'", "get", "Name,AdapterRAM", "/format:csv")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("Intel WMI query failed: %v", err)
+	}
+	
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.Contains(line, "AdapterRAM,Name") {
+			continue
+		}
+		
+		fields := strings.Split(line, ",")
+		if len(fields) >= 2 {
+			name := strings.TrimSpace(fields[1])
+			if name != "" && strings.Contains(strings.ToLower(name), "intel") {
+				var memoryTotal float64
+				if memStr := strings.TrimSpace(fields[0]); memStr != "" && memStr != "0" {
+					if mem, err := strconv.ParseFloat(memStr, 64); err == nil {
+						memoryTotal = mem / (1024 * 1024) // Bytes to MB
+					}
+				}
+				
+				LogDebug("Intel GPU info from WMI", "name", name, "memory", memoryTotal)
+				return &GPUInfo{
+					Name:         name,
+					Usage:        -1.0, // WMI에서는 사용률 정보 불가
+					MemoryUsed:   -1.0,
+					MemoryTotal:  memoryTotal,
+					Temperature:  -1.0,
+					Power:        -1.0,
+				}, nil
+			}
+		}
+	}
+	
+	return nil, fmt.Errorf("Intel GPU not found via WMI")
+}
+
+// detectGPUViaWMI - WMI를 통한 일반 GPU 감지 (벤더 무관)
+func detectGPUViaWMI() (*GPUInfo, error) {
+	cmd := createHiddenCommand("wmic", "path", "win32_VideoController", "get", "Name,AdapterRAM", "/format:csv")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("generic WMI query failed: %v", err)
+	}
+	
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.Contains(line, "AdapterRAM,Name") {
+			continue
+		}
+		
+		fields := strings.Split(line, ",")
+		if len(fields) >= 2 {
+			name := strings.TrimSpace(fields[1])
+			// Microsoft, Virtual, 기본 어댑터 제외
+			if name != "" && !strings.Contains(name, "Microsoft") && 
+			   !strings.Contains(name, "Virtual") && !strings.Contains(name, "Basic") {
+				
+				var memoryTotal float64
+				if memStr := strings.TrimSpace(fields[0]); memStr != "" && memStr != "0" {
+					if mem, err := strconv.ParseFloat(memStr, 64); err == nil {
+						memoryTotal = mem / (1024 * 1024) // Bytes to MB
+					}
+				}
+				
+				LogDebug("Generic GPU info from WMI", "name", name, "memory", memoryTotal)
+				return &GPUInfo{
+					Name:         name,
+					Usage:        -1.0, // WMI에서는 사용률 정보 불가
+					MemoryUsed:   -1.0,
+					MemoryTotal:  memoryTotal,
+					Temperature:  -1.0,
+					Power:        -1.0,
+				}, nil
+			}
+		}
+	}
+	
+	return nil, fmt.Errorf("no GPU found via WMI")
+}
+
+func getGPUInfoGeneric() (*GPUInfo, error) {
+	// GPU 모니터링 도구가 없는 시스템에서는 실제 데이터 제공 불가
+	return nil, fmt.Errorf("GPU monitoring not available: requires nvidia-smi, rocm-smi, or other GPU-specific tools")
 }
 
 // parseNVIDIAProcesses는 nvidia-smi 명령어 출력을 파싱하여 GPU 프로세스 목록을 반환합니다.
@@ -1091,16 +1391,17 @@ func parseNVIDIAProcessesAlternative() ([]GPUProcess, error) {
 			processName := strings.TrimSpace(fields[1])
 			memoryStr := strings.TrimSpace(fields[2])
 			
-			// [N/A] 또는 [Insufficient Permissions] 처리
+			// [N/A], [Insufficient Permissions] 등도 유효한 프로세스로 처리 (범용 지원)
 			var gpuMemory float64
-			if strings.Contains(memoryStr, "[") || strings.Contains(memoryStr, "N/A") {
-				// 권한이 없거나 데이터가 없는 경우 스킵 (실제 데이터가 없으므로)
-				continue
+			if strings.Contains(memoryStr, "[") || strings.Contains(memoryStr, "N/A") || strings.Contains(memoryStr, "Permissions") {
+				// 메모리 정보가 없지만 GPU를 사용하는 프로세스로 인식
+				gpuMemory = 0.0 // 메모리 정보 없음을 나타내는 0
+				LogDebug("GPU process with limited info", "pid", pid, "name", processName, "memory_status", memoryStr)
 			} else {
 				gpuMemory, _ = strconv.ParseFloat(memoryStr, 64)
-				// GPU 메모리를 실제로 사용하지 않는 경우도 스킵
-				if gpuMemory <= 0 {
-					continue
+				// 네거티브 메모리 값은 0으로 설정
+				if gpuMemory < 0 {
+					gpuMemory = 0.0
 				}
 			}
 			
@@ -1208,17 +1509,44 @@ func getGPUProcesses() ([]GPUProcess, error) {
 	}
 }
 
-// getGPUProcessesWindows는 Windows에서 GPU 프로세스 목록을 수집합니다.
+// getGPUProcessesWindows - Windows에서 범용 GPU 프로세스 감지
 func getGPUProcessesWindows() ([]GPUProcess, error) {
-	// 먼저 NVIDIA GPU 프로세스 확인
+	LogDebug("Starting Windows GPU process detection")
+	
+	// 1단계: NVIDIA GPU 프로세스 확인
 	if nvProcesses, err := parseNVIDIAProcesses(); err == nil && len(nvProcesses) > 0 {
-		log.Printf("Found %d NVIDIA GPU processes", len(nvProcesses))
+		LogInfo("NVIDIA GPU processes found", "count", len(nvProcesses))
 		return nvProcesses, nil
+	} else {
+		LogDebug("NVIDIA process detection failed", "error", err)
 	}
 	
-	// NVIDIA 실패시 일반적인 방법 시도
-	log.Printf("NVIDIA GPU process detection failed, trying generic method...")
-	return getGPUProcessesGeneric()
+	// 2단계: AMD GPU 프로세스 확인
+	if amdProcesses, err := parseAMDProcessesWindows(); err == nil && len(amdProcesses) > 0 {
+		LogInfo("AMD GPU processes found", "count", len(amdProcesses))
+		return amdProcesses, nil
+	} else {
+		LogDebug("AMD process detection failed", "error", err)
+	}
+	
+	// 3단계: Intel GPU 프로세스 확인
+	if intelProcesses, err := parseIntelProcessesWindows(); err == nil && len(intelProcesses) > 0 {
+		LogInfo("Intel GPU processes found", "count", len(intelProcesses))
+		return intelProcesses, nil
+	} else {
+		LogDebug("Intel process detection failed", "error", err)
+	}
+	
+	// 4단계: 일반적인 방법 (프로세스 이름 기반 추정)
+	if genericProcesses, err := getGPUProcessesGeneric(); err == nil && len(genericProcesses) > 0 {
+		LogInfo("Generic GPU processes found", "count", len(genericProcesses))
+		return genericProcesses, nil
+	} else {
+		LogDebug("Generic process detection failed", "error", err)
+	}
+	
+	LogWarn("No GPU processes detected by any method")
+	return []GPUProcess{}, nil // 빈 리스트 반환 (nil 대신)
 }
 
 // getGPUProcessesLinux는 Linux에서 GPU 프로세스 목록을 수집합니다.
@@ -1291,13 +1619,21 @@ func parseAMDProcesses() ([]GPUProcess, error) {
 	return processes, nil
 }
 
-// getGPUProcessesGeneric은 플랫폼에 관계없이 일반적인 GPU 프로세스 목록을 반환합니다.
+// getGPUProcessesGeneric - 가장 마지막 단계의 범용 GPU 프로세스 감지
 func getGPUProcessesGeneric() ([]GPUProcess, error) {
-	// GPU를 많이 사용할 것으로 예상되는 프로세스들을 검색
+	LogDebug("Starting generic GPU process detection")
+	
+	// GPU를 많이 사용할 것으로 예상되는 프로세스들 (확장된 목록)
 	gpuIntensiveProcesses := []string{
-		"chrome", "firefox", "steam", "obs", "blender", "unity", "unreal",
-		"python", "tensorflow", "pytorch", "cuda", "nvidia", "amd",
-		"game", "render", "video", "streaming",
+		"chrome", "firefox", "edge", "opera", "brave", "safari", // 브라우저
+		"steam", "epic", "ubisoft", "origin", "battlenet", "discord", // 게임 플랫폼
+		"obs", "xsplit", "streamlabs", "nvidia", "radeon", "amd", // 스트리밍/GPU 도구
+		"blender", "unity", "unreal", "maya", "3ds", "cinema4d", // 3D 소프트웨어
+		"photoshop", "premiere", "after", "davinci", "vegas", // 비디오 편집
+		"python", "tensorflow", "pytorch", "cuda", "jupyter", "anaconda", // AI/ML
+		"handbrake", "ffmpeg", "vlc", "mpc", "potplayer", // 비디오 디코딩
+		"miner", "mining", "hashcat", "folding", "nicehash", // 암호화폐/컴퓨팅
+		"game", "render", "video", "streaming", "dx", "opengl", "vulkan", // 일반적인 GPU 사용 용어
 	}
 	
 	allProcesses, err := process.Processes()
@@ -1701,7 +2037,7 @@ func GetCPUCores() (int, error) {
 		return 0, err
 	}
 	if len(cpuInfo) == 0 {
-		return 1, nil // 기본값
+		return 0, fmt.Errorf("unable to determine CPU core count")
 	}
 	return int(cpuInfo[0].Cores), nil
 }
@@ -1722,6 +2058,59 @@ func GetBootTime() (time.Time, error) {
 		return time.Time{}, err
 	}
 	return time.Unix(int64(bootTime), 0), nil
+}
+
+// GetSystemUptime returns system uptime in seconds
+func GetSystemUptime() (int64, error) {
+	bootTime, err := GetBootTime()
+	if err != nil {
+		return 0, err
+	}
+	
+	uptime := time.Since(bootTime).Seconds()
+	return int64(uptime), nil
+}
+
+// GetMemoryDetails returns detailed memory information
+func GetMemoryDetails() (*MemoryDetails, error) {
+	memStat, err := mem.VirtualMemory()
+	if err != nil {
+		return nil, err
+	}
+	
+	swapStat, err := mem.SwapMemory()
+	if err != nil {
+		return nil, err
+	}
+	
+	return &MemoryDetails{
+		Physical: float64(memStat.Used) / 1024 / 1024,      // Physical memory used in MB
+		Virtual:  float64(memStat.Total) / 1024 / 1024,     // Virtual memory total in MB
+		Swap:     float64(swapStat.Used) / 1024 / 1024,     // Swap memory used in MB
+	}, nil
+}
+
+// GetNetworkStatus returns overall network connectivity status
+func GetNetworkStatus() (string, error) {
+	interfaces, err := GetNetworkInterfaces()
+	if err != nil {
+		return "unknown", err
+	}
+	
+	activeCount := 0
+	for _, iface := range interfaces {
+		if iface.Status == 1.0 {
+			activeCount++
+		}
+	}
+	
+	if activeCount == 0 {
+		return "disconnected", nil
+	} else if activeCount == 1 {
+		return "connected", nil
+	} else {
+		return "multiple_connections", nil
+	}
 }
 
 // GetCPUUsage returns current CPU usage percentage
@@ -1902,5 +2291,93 @@ func GetNetworkIOSpeed() (float64, float64, error) {
 	lastIOStats.timestamp = currentTime
 
 	return sentSpeed, recvSpeed, nil
+}
+
+// parseAMDProcessesWindows - Windows에서 AMD GPU 프로세스 감지
+func parseAMDProcessesWindows() ([]GPUProcess, error) {
+	// AMD 전용 도구는 제한적이므로, 프로세스 이름 기반으로 추정
+	LogDebug("Attempting AMD GPU process detection via process names")
+	
+	// AMD/Radeon과 관련된 알려진 프로세스들
+	amdRelatedProcesses := []string{
+		"RadeonSoftware", "AMD", "Radeon", "RadeontopNG", "AMDRSServ",
+		"CNext", "AMDCleanupUtility", "RadeonSettings", "RadeonInstaller",
+	}
+	
+	return findProcessesByNames(amdRelatedProcesses, "AMD")
+}
+
+// parseIntelProcessesWindows - Windows에서 Intel GPU 프로세스 감지
+func parseIntelProcessesWindows() ([]GPUProcess, error) {
+	LogDebug("Attempting Intel GPU process detection via process names")
+	
+	// Intel GPU와 관련된 알려진 프로세스들
+	intelRelatedProcesses := []string{
+		"IntelGraphicsControlPanel", "IGCC", "IntelGraphicsExperience",
+		"igfxEM", "igfxHK", "igfxTray", "IntelCpuSet", "IntelGraphicsCommand",
+	}
+	
+	return findProcessesByNames(intelRelatedProcesses, "Intel")
+}
+
+// findProcessesByNames - 프로세스 이름으로 GPU 관련 프로세스 찾기
+func findProcessesByNames(processNames []string, gpuType string) ([]GPUProcess, error) {
+	var foundProcesses []GPUProcess
+	
+	// wmic로 모든 프로세스 목록 가져오기
+	cmd := createHiddenCommand("wmic", "process", "get", "ProcessId,Name,CommandLine", "/format:csv")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get process list: %v", err)
+	}
+	
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.Contains(line, "CommandLine,Name,ProcessId") {
+			continue
+		}
+		
+		fields := strings.Split(line, ",")
+		if len(fields) >= 3 {
+			commandLine := strings.TrimSpace(fields[0])
+			processName := strings.TrimSpace(fields[1])
+			pidStr := strings.TrimSpace(fields[2])
+			
+			if pidStr == "" {
+				continue
+			}
+			
+			pid, err := strconv.ParseInt(pidStr, 10, 32)
+			if err != nil {
+				continue
+			}
+			
+			// 프로세스 이름에서 찾기
+			for _, searchName := range processNames {
+				if strings.Contains(strings.ToLower(processName), strings.ToLower(searchName)) ||
+				   strings.Contains(strings.ToLower(commandLine), strings.ToLower(searchName)) {
+					
+					foundProcesses = append(foundProcesses, GPUProcess{
+						PID:       int32(pid),
+						Name:      processName,
+						GPUUsage:  -1.0, // 이름 기반 추정에서는 사용률 알 수 없음
+						GPUMemory: -1.0, // 메모리 사용량 알 수 없음
+						Type:      "Graphics",
+						Command:   commandLine,
+						Status:    "running",
+					})
+					LogDebug("Found GPU-related process", "type", gpuType, "name", processName, "pid", pid)
+					break
+				}
+			}
+		}
+	}
+	
+	if len(foundProcesses) == 0 {
+		return nil, fmt.Errorf("no %s GPU processes found", gpuType)
+	}
+	
+	return foundProcesses, nil
 }
 
