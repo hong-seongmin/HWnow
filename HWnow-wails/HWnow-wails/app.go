@@ -401,11 +401,34 @@ func (a *App) GetRealTimeMetrics() (*RealTimeMetrics, error) {
 		gpuInfo = nil // 실제 데이터 없으면 nil
 	}
 
-	// GPU 프로세스 - 실제 데이터만
+	// GPU 프로세스 - 실제 데이터만 (상세 로깅 추가)
+	monitoring.LogInfo("=== STARTING GPU PROCESS COLLECTION IN GetRealTimeMetrics ===")
 	gpuProcesses, err := monitoring.GetGPUProcesses()
 	if err != nil {
-		monitoring.LogWarn("GPU processes not available", "error", err)
+		monitoring.LogError("GPU processes collection failed in GetRealTimeMetrics", 
+			"error", err,
+			"error_type", fmt.Sprintf("%T", err),
+			"timestamp", time.Now().Format(time.RFC3339))
 		gpuProcesses = nil
+	} else if gpuProcesses == nil {
+		monitoring.LogWarn("GPU processes collection returned nil (no processes found)")
+		gpuProcesses = nil
+	} else {
+		monitoring.LogInfo("GPU processes collection succeeded in GetRealTimeMetrics", 
+			"process_count", len(gpuProcesses),
+			"timestamp", time.Now().Format(time.RFC3339))
+		
+		// 각 프로세스의 상세 정보 로깅
+		for i, proc := range gpuProcesses {
+			monitoring.LogInfo("GPU Process Detail in GetRealTimeMetrics",
+				"index", i,
+				"pid", proc.PID,
+				"name", proc.Name,
+				"gpu_usage_percent", proc.GPUUsage,
+				"gpu_memory_mb", proc.GPUMemory,
+				"type", proc.Type,
+				"status", proc.Status)
+		}
 	}
 
 	// Top 프로세스 (상위 10개)
@@ -459,10 +482,32 @@ func (a *App) GetRealTimeMetrics() (*RealTimeMetrics, error) {
 		Timestamp:      timestamp,
 	}
 	
+	// === ENHANCED LOGGING: GPU Process Data Transfer Verification ===
+	monitoring.LogInfo("=== GPU PROCESS DATA TRANSFER VERIFICATION IN GetRealTimeMetrics ===")
+	if gpuProcesses != nil && len(gpuProcesses) > 0 {
+		monitoring.LogInfo("GPU processes being sent to frontend", 
+			"count", len(gpuProcesses),
+			"first_process_pid", gpuProcesses[0].PID,
+			"first_process_name", gpuProcesses[0].Name,
+			"timestamp", time.Now().Format(time.RFC3339))
+		
+		// Verify PID data types for serialization compatibility
+		monitoring.LogInfo("PID data type verification", 
+			"pid_value", gpuProcesses[0].PID,
+			"pid_type", fmt.Sprintf("%T", gpuProcesses[0].PID),
+			"json_serialization_test", fmt.Sprintf("%d", gpuProcesses[0].PID))
+	} else {
+		monitoring.LogWarn("GPU processes array is empty or nil before frontend transfer", 
+			"gpuProcesses_nil", gpuProcesses == nil,
+			"gpuProcesses_length", func() int { if gpuProcesses == nil { return -1 } else { return len(gpuProcesses) } }(),
+			"timestamp", time.Now().Format(time.RFC3339))
+	}
+	
 	monitoring.LogDebug("Real-time metrics retrieved", 
 		"cpu_usage", cpuUsage,
 		"memory_usage", memUsage,
-		"network_interfaces", len(networkIO))
+		"network_interfaces", len(networkIO),
+		"gpu_processes_count", func() int { if gpuProcesses == nil { return 0 } else { return len(gpuProcesses) } }())
 	
 	return metrics, nil
 }
@@ -472,14 +517,8 @@ func (a *App) GetGPUInfo() (*monitoring.GPUInfo, error) {
 	gpuInfo, err := monitoring.GetGPUInfo()
 	if err != nil {
 		monitoring.LogInfo("GPU not available or failed to retrieve info", "error", err)
-		// GPU가 없거나 조회 실패 시 안전한 기본값 반환
-		return &monitoring.GPUInfo{
-			Name:         "N/A",
-			Usage:        0,
-			MemoryUsed:   0,
-			MemoryTotal:  0,
-			Temperature:  0,
-		}, nil
+		// Return error instead of fake data - let frontend handle GPU unavailable state
+		return nil, err
 	}
 	
 	monitoring.LogDebug("GPU info retrieved successfully", 
@@ -495,8 +534,8 @@ func (a *App) GetGPUProcesses() ([]monitoring.GPUProcess, error) {
 	processes, err := monitoring.GetGPUProcesses()
 	if err != nil {
 		monitoring.LogInfo("Failed to get GPU processes", "error", err)
-		// 프로세스 없거나 조회 실패 시 빈 배열 반환
-		return []monitoring.GPUProcess{}, nil
+		// Return error instead of empty array - let frontend handle unavailable state
+		return nil, err
 	}
 	
 	monitoring.LogDebug("GPU processes retrieved", "count", len(processes))
@@ -550,17 +589,19 @@ func (s *MonitoringService) Start() error {
 		return nil // 이미 시작됨
 	}
 	
-	monitoring.LogInfo("Starting background monitoring goroutines...")
+	monitoring.LogInfo("Monitoring service starting - background goroutines disabled for CPU optimization")
 	
-	// Start background monitoring goroutines
-	go s.startSystemMonitoring()
-	go s.startProcessMonitoring()
-	go s.startGPUMonitoring()
-	go s.startNetworkMonitoring()
-	go s.startDiskMonitoring()
+	// Background monitoring goroutines disabled to reduce CPU usage
+	// Frontend polling handles all data collection efficiently
+	// Uncomment below lines to re-enable background data collection:
+	// go s.startSystemMonitoring()
+	// go s.startProcessMonitoring() 
+	// go s.startGPUMonitoring()
+	// go s.startNetworkMonitoring()
+	// go s.startDiskMonitoring()
 	
 	s.isRunning = true
-	monitoring.LogInfo("Monitoring service started successfully with background data collection")
+	monitoring.LogInfo("Monitoring service started successfully - using frontend polling only")
 	
 	return nil
 }

@@ -1,6 +1,7 @@
 package monitoring
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -83,6 +84,31 @@ func createHiddenCommand(name string, args ...string) *exec.Cmd {
 	}
 	
 	return cmd
+}
+
+// createHiddenCommandWithTimeout creates a command with timeout and hidden window
+func createHiddenCommandWithTimeout(name string, timeoutSeconds int, args ...string) *exec.Cmd {
+	cmd := createHiddenCommand(name, args...)
+	
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
+	
+	// Store cancel function for potential cleanup
+	// Note: In practice, the caller should handle ctx cancellation properly
+	_ = cancel
+	
+	// Apply context to command
+	cmdWithCtx := exec.CommandContext(ctx, name, args...)
+	
+	// Copy the SysProcAttr from the original hidden command
+	if cmd.SysProcAttr != nil {
+		cmdWithCtx.SysProcAttr = cmd.SysProcAttr
+	}
+	if cmd.Env != nil {
+		cmdWithCtx.Env = cmd.Env
+	}
+	
+	return cmdWithCtx
 }
 
 // Windows UAC 및 권한 관리 시스템
