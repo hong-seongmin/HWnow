@@ -93,14 +93,14 @@ export class WailsEventService {
   
   private getDefaultConfig(): EventServiceConfig {
     return {
-      pollingInterval: 2000, // 2 seconds default
-      batchProcessingDelay: 150,
-      maxRetries: 3,
+      pollingInterval: 6000, // 6 seconds (further reduced to minimize nvidia-smi load)
+      batchProcessingDelay: 300,
+      maxRetries: 2, // Reduced retries
       adaptivePolling: true,
       priorityMetrics: ['cpu', 'ram', 'gpu', 'gpu_process'],
-      performanceThreshold: 1000, // 1 second
-      errorRateThreshold: 20, // 20%
-      backgroundPollingInterval: 10000, // 10 seconds when backgrounded
+      performanceThreshold: 2000, // 2 seconds (more lenient)
+      errorRateThreshold: 30, // 30% (more lenient)
+      backgroundPollingInterval: 15000, // 15 seconds when backgrounded
       highFrequencyMetrics: ['cpu', 'ram', 'gpu_usage', 'gpu_processes'],
       lowFrequencyMetrics: ['system_info', 'disk_total', 'disk_free']
     };
@@ -136,7 +136,7 @@ export class WailsEventService {
       // Reset counters but keep running average
       this.performanceMetrics.errorCount = 0;
       this.performanceMetrics.successCount = 0;
-    }, 60000); // Every minute
+    }, 300000); // Every 5 minutes (reduced CPU usage)
   }
   
   private initializeVisibilityTracking(): void {
@@ -348,7 +348,7 @@ export class WailsEventService {
   
   private startSystemInfoPolling(): void {
     const poller = this.createSystemInfoPoller();
-    this.startPollingJob('system_info', poller, 30000); // Every 30 seconds
+    this.startPollingJob('system_info', poller, 60000); // Every 60 seconds (reduced CPU usage)
   }
   
   private createSystemInfoPoller(): () => Promise<void> {
@@ -539,21 +539,19 @@ export class WailsEventService {
         });
         
       } catch (error) {
-        // GPU might not be available, handle gracefully
+        // GPU not available - do not store any fake data
+        // Let widgets handle the absence of GPU data appropriately
         console.warn('[WailsEvents] GPU info not available:', error);
         
-        // Set default values
+        // Clear any existing GPU data instead of setting fake values
         const { setData } = useSystemResourceStore.getState();
-        setData('gpu_usage', 0);
-        setData('gpu_memory_used', 0);
-        setData('gpu_memory_total', 0);
-        setData('gpu_temperature', 0);
-        setData('gpu_info', 0, 'N/A');
+        // Note: Not setting any data when GPU is unavailable
+        // Widgets should check for data availability before rendering
       }
     };
     
     // GPU info polling - moderate frequency
-    const intervalId = setInterval(pollGPUInfo, this.config.pollingInterval * 2); // Every 4 seconds
+    const intervalId = setInterval(pollGPUInfo, this.config.pollingInterval * 3); // Every 15 seconds (reduced CPU usage)
     this.pollingIntervals.set('gpu_info', intervalId);
     
     // Initial call
@@ -572,16 +570,35 @@ export class WailsEventService {
           'GetGPUProcesses'
         );
         
+        console.log('[WailsEvents] [DEDICATED] Raw GPU processes received from backend:', processes.length, 'processes', processes);
+        
         // Convert to our batch format and process
-        this.gpuProcessBatch = processes.map(process => ({
-          pid: process.pid,
-          name: process.name,
-          gpu_usage: process.gpu_usage,
-          gpu_memory: process.memory_usage,
-          type: 'gpu',
-          command: process.name,
-          status: 'running'
-        }));
+        this.gpuProcessBatch = processes.map(process => {
+          console.log('[WailsEvents] [DEDICATED] Mapping process:', {
+            raw: process,
+            mapped: {
+              pid: process.pid,
+              name: process.name,
+              gpu_usage: process.gpu_usage,
+              gpu_memory: process.gpu_memory,
+              type: process.type || 'gpu',
+              command: process.command || process.name,
+              status: process.status || 'running'
+            }
+          });
+          
+          return {
+            pid: process.pid,
+            name: process.name,
+            gpu_usage: process.gpu_usage,
+            gpu_memory: process.gpu_memory,  // Fixed: Use correct field name from backend
+            type: process.type || 'gpu',     // Use actual type from backend
+            command: process.command || process.name,  // Use actual command from backend
+            status: process.status || 'running'        // Use actual status from backend
+          };
+        });
+        
+        console.log('[WailsEvents] [DEDICATED] Final GPU process batch to store:', this.gpuProcessBatch);
         
         // Process batch immediately
         this.processGPUProcessBatch();
@@ -589,14 +606,13 @@ export class WailsEventService {
       } catch (error) {
         this.handlePollingError('gpu_processes', error);
         
-        // Clear GPU processes on error
-        const { clearGPUProcesses } = useSystemResourceStore.getState();
-        clearGPUProcesses();
+        // Do not clear or set empty array - let widget handle absence of data
+        console.warn('[WailsEvents] GPU processes unavailable, not setting fake data');
       }
     };
     
-    // GPU process polling - frequent for real-time updates
-    const intervalId = setInterval(pollGPUProcesses, this.config.pollingInterval);
+    // GPU process polling - moderate frequency with caching support
+    const intervalId = setInterval(pollGPUProcesses, this.config.pollingInterval * 2); // Every 12 seconds (with caching, less frequent polling is acceptable)
     this.pollingIntervals.set('gpu_processes', intervalId);
     
     // Initial call
@@ -651,9 +667,9 @@ export class WailsEventService {
     };
     
     // Process polling - moderate frequency
-    const intervalId = setInterval(pollTopProcesses, this.config.pollingInterval * 3); // Every 6 seconds
+    const intervalId = setInterval(pollTopProcesses, this.config.pollingInterval * 4); // Every 20 seconds (reduced CPU usage)
     this.pollingIntervals.set('top_processes', intervalId);
-    console.log('[WailsEvents] Top process polling interval set - every', this.config.pollingInterval * 3, 'ms');
+    console.log('[WailsEvents] Top process polling interval set - every', this.config.pollingInterval * 4, 'ms');
     
     // Initial call
     console.log('[WailsEvents] Making initial top process polling call...');
@@ -732,6 +748,8 @@ export class WailsEventService {
   private processGPUProcessBatch(): void {
     const { setGPUProcesses } = useSystemResourceStore.getState();
     
+    console.log('[WailsEvents] [DEDICATED] Processing GPU process batch:', this.gpuProcessBatch.length, 'processes');
+    
     if (this.gpuProcessBatch.length > 0) {
       // Convert our batch format to store format
       const processesForStore = this.gpuProcessBatch.map(process => ({
@@ -744,7 +762,10 @@ export class WailsEventService {
         status: process.status
       }));
       
+      console.log('[WailsEvents] [DEDICATED] Setting GPU processes in store:', processesForStore);
       setGPUProcesses(processesForStore);
+    } else {
+      console.log('[WailsEvents] [DEDICATED] No GPU processes in batch - not updating store');
     }
     
     // Clear batch

@@ -42,8 +42,11 @@ export interface GPUInfoResponse {
 export interface GPUProcessResponse {
   pid: number;
   name: string;
-  memory_usage: number;
+  gpu_memory: number;  // Fixed: Align with Go backend GPUProcess struct
   gpu_usage: number;
+  type: string;        // Added: Missing fields from backend
+  command: string;     // Added: Missing fields from backend  
+  status: string;      // Added: Missing fields from backend
 }
 
 export interface TopProcessResponse {

@@ -115,6 +115,22 @@ const safeToFixed = (value: number, digits: number = 1): string => {
   }
 };
 
+// Enhanced GPU usage display with adaptive precision for small values
+const safeToFixedGPU = (value: number): string => {
+  try {
+    if (!isValidNumber(value)) return '0.0';
+    // For values less than 1%, show 2 decimal places to reveal small usage
+    // For values >= 1%, show 1 decimal place as usual
+    if (value < 1.0 && value > 0) {
+      return value.toFixed(2);
+    }
+    return value.toFixed(1);
+  } catch (error) {
+    console.warn('[GPUProcessWidget] GPU usage toFixed error:', error, 'value:', value);
+    return '0.0';
+  }
+};
+
 // Safe key generation for React
 const getSafeKey = (process: GPUProcessData, index: number): string => {
   try {
@@ -1714,14 +1730,14 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
                   <div 
                     key={getSafeKey(process, index)} 
                     className={`process-item ${statusClass} ${usageClass} ${memoryClass} ${typeClass} ${selectedProcesses.has(process.pid) ? 'process-selected' : ''} ${hasRecentChanges && enableUpdateAnimations ? 'process-updated' : ''} ${focusedRowIndex === index && isKeyboardNavigation ? 'process-keyboard-focused' : ''}`}
-                    title={`${process.name} (PID: ${process.pid})\nStatus: ${process.status}\nGPU Usage: ${safeToFixed(process.gpu_usage, 1)}%\nGPU Memory: ${safeToFixed(process.gpu_memory, 0)}MB${updateInfo ? `\nLast updated: ${formatTime(updateInfo.timestamp)}` : ''}`}
+                    title={`${process.name} (PID: ${process.pid})\nStatus: ${process.status}\nGPU Usage: ${safeToFixedGPU(process.gpu_usage)}%\nGPU Memory: ${safeToFixed(process.gpu_memory, 0)}MB${updateInfo ? `\nLast updated: ${formatTime(updateInfo.timestamp)}` : ''}`}
                     onClick={(e) => handleProcessSelect(process.pid, e)}
                     onContextMenu={(e) => handleContextMenu(e, process.pid, process.name)}
                     tabIndex={0}
                     role="row"
                     aria-rowindex={index + 1}
                     aria-selected={selectedProcesses.has(process.pid)}
-                    aria-label={`${index + 1}번째 프로세스: ${process.name}, PID ${process.pid}, GPU 사용률 ${safeToFixed(process.gpu_usage, 1)}%, 메모리 ${safeToFixed(process.gpu_memory, 0)}MB, 상태 ${process.status}`}
+                    aria-label={`${index + 1}번째 프로세스: ${process.name}, PID ${process.pid}, GPU 사용률 ${safeToFixedGPU(process.gpu_usage)}%, 메모리 ${safeToFixed(process.gpu_memory, 0)}MB, 상태 ${process.status}`}
                     data-process-index={index}
                     onFocus={() => {
                       if (!isKeyboardNavigation) {
@@ -1797,7 +1813,7 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
                     <div 
                       className="process-gpu"
                       role="gridcell"
-                      aria-label={`GPU 사용률: ${safeToFixed(process.gpu_usage, 1)}퍼센트`}
+                      aria-label={`GPU 사용률: ${safeToFixedGPU(process.gpu_usage)}퍼센트`}
                       style={{ 
                         color: process.gpu_usage > 90 ? 'var(--color-error)' : 
                                process.gpu_usage > 70 ? 'var(--color-warning)' : 
@@ -1806,7 +1822,7 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
                         fontWeight: process.gpu_usage > 80 ? '700' : '500',
                         position: 'relative'
                       }}
-                      title={`GPU Usage: ${safeToFixed(process.gpu_usage, 1)}%`}
+                      title={`GPU Usage: ${safeToFixedGPU(process.gpu_usage)}%`}
                     >
                       {process.gpu_usage > 95 && (
                         <span 
@@ -1821,7 +1837,7 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
                           }}
                         >🔥</span>
                       )}
-                      {safeToFixed(process.gpu_usage, 1)}%
+                      {safeToFixedGPU(process.gpu_usage)}%
                     </div>
                     <div 
                       className="process-memory"
