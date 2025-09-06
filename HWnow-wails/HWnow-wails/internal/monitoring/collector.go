@@ -38,8 +38,52 @@ var (
 	logFile  *os.File
 )
 
-// GPU 프로세스 캐싱 시스템 - DISABLED (REAL DATA ONLY MODE)
-// 캐시 시스템 완전 제거 - 사용자 요구사항: 실제 데이터만 사용
+// GPU 프로세스 캐싱 시스템 - CPU 최적화를 위한 효율적 캐싱
+// 실제 데이터 유지하면서 시스템 부하 최소화
+
+// GPU 프로세스 캐시 구조체
+type GPUProcessCache struct {
+	processes   []GPUProcess
+	lastUpdated time.Time
+	mutex       sync.RWMutex
+}
+
+// GPU 정보 캐시 구조체  
+type GPUInfoCache struct {
+	info        *GPUInfo
+	lastUpdated time.Time
+	mutex       sync.RWMutex
+}
+
+// nvidia-smi 경로 캐시
+type NVIDIASMIPathCache struct {
+	path        string
+	lastChecked time.Time
+	mutex       sync.RWMutex
+}
+
+// WMI VideoController 캐시 구조체
+type VideoControllerCache struct {
+	controllers []string
+	lastUpdated time.Time
+	mutex       sync.RWMutex
+}
+
+// 전역 캐시 인스턴스들
+var (
+	gpuProcessCache      = &GPUProcessCache{}
+	gpuInfoCache         = &GPUInfoCache{}
+	nvidiaSMIPathCache   = &NVIDIASMIPathCache{}
+	videoControllerCache = &VideoControllerCache{}
+)
+
+// 캐시 유효 기간 상수들 (CPU 최적화를 위해 조정 가능)
+const (
+	GPU_PROCESS_CACHE_DURATION = 30 * time.Second  // GPU 프로세스 캐시: 30초
+	GPU_INFO_CACHE_DURATION    = 60 * time.Second  // GPU 정보 캐시: 1분  
+	NVIDIA_SMI_PATH_CACHE_DURATION = 5 * time.Minute // nvidia-smi 경로 캐시: 5분
+	VIDEO_CONTROLLER_CACHE_DURATION = 10 * time.Minute // WMI VideoController 캐시: 10분
+)
 
 // GPU 벤더 감지 및 고정 시스템
 type GPUVendor int
@@ -248,22 +292,21 @@ func isNVIDIAGPUAvailable() bool {
 	return true
 }
 
-// isAMDGPUAvailable checks if AMD GPU is available on the system
+// isAMDGPUAvailable checks if AMD GPU is available on the system using cached data
 func isAMDGPUAvailable() bool {
-	// Windows: AMD GPU 감지 로직 (간단한 구현)
+	// Windows: AMD GPU 감지 로직 (캐시 최적화)
 	if runtime.GOOS == "windows" {
-		// WMI를 통한 AMD GPU 감지 (간소화)
-		cmd := createHiddenCommand("wmic", "path", "win32_VideoController", "get", "name", "/format:csv")
-		output, err := cmd.Output()
+		controllers, err := getCachedVideoControllers()
 		if err != nil {
-			LogDebug("AMD GPU detection failed", "reason", "wmic command failed", "error", err.Error())
+			LogDebug("AMD GPU detection failed", "reason", "cached VideoController fetch failed", "error", err.Error())
 			return false
 		}
 		
-		outputStr := strings.ToLower(string(output))
-		if strings.Contains(outputStr, "amd") || strings.Contains(outputStr, "radeon") {
-			LogDebug("AMD GPU detected via WMI")
-			return true
+		for _, controller := range controllers {
+			if strings.Contains(controller, "amd") || strings.Contains(controller, "radeon") {
+				LogDebug("AMD GPU detected via cached WMI data")
+				return true
+			}
 		}
 	}
 	
@@ -271,21 +314,21 @@ func isAMDGPUAvailable() bool {
 	return false
 }
 
-// isIntelGPUAvailable checks if Intel GPU is available on the system
+// isIntelGPUAvailable checks if Intel GPU is available on the system using cached data
 func isIntelGPUAvailable() bool {
-	// Windows: Intel GPU 감지 로직
+	// Windows: Intel GPU 감지 로직 (캐시 최적화)
 	if runtime.GOOS == "windows" {
-		cmd := createHiddenCommand("wmic", "path", "win32_VideoController", "get", "name", "/format:csv")
-		output, err := cmd.Output()
+		controllers, err := getCachedVideoControllers()
 		if err != nil {
-			LogDebug("Intel GPU detection failed", "reason", "wmic command failed", "error", err.Error())
+			LogDebug("Intel GPU detection failed", "reason", "cached VideoController fetch failed", "error", err.Error())
 			return false
 		}
 		
-		outputStr := strings.ToLower(string(output))
-		if strings.Contains(outputStr, "intel") {
-			LogDebug("Intel GPU detected via WMI")
-			return true
+		for _, controller := range controllers {
+			if strings.Contains(controller, "intel") {
+				LogDebug("Intel GPU detected via cached WMI data")
+				return true
+			}
 		}
 	}
 	
@@ -943,6 +986,194 @@ func findNVIDIASMIPath() string {
 	return "nvidia-smi"
 }
 
+// ===== 캐싱 시스템 메서드들 - CPU 최적화 =====
+
+// getCachedNVIDIASMIPath nvidia-smi 경로를 캐시에서 반환하거나 새로 검색
+func getCachedNVIDIASMIPath() string {
+	nvidiaSMIPathCache.mutex.RLock()
+	// 캐시가 유효한 경우 캐시된 경로 반환
+	if time.Since(nvidiaSMIPathCache.lastChecked) < NVIDIA_SMI_PATH_CACHE_DURATION {
+		path := nvidiaSMIPathCache.path
+		nvidiaSMIPathCache.mutex.RUnlock()
+		return path
+	}
+	nvidiaSMIPathCache.mutex.RUnlock()
+
+	// 캐시가 만료된 경우 새로 검색하고 캐시 업데이트
+	nvidiaSMIPathCache.mutex.Lock()
+	defer nvidiaSMIPathCache.mutex.Unlock()
+	
+	// 다시 한번 확인 (다른 고루틴이 업데이트했을 수도 있음)
+	if time.Since(nvidiaSMIPathCache.lastChecked) < NVIDIA_SMI_PATH_CACHE_DURATION {
+		return nvidiaSMIPathCache.path
+	}
+	
+	// 새로 검색
+	path := findNVIDIASMIPath()
+	nvidiaSMIPathCache.path = path
+	nvidiaSMIPathCache.lastChecked = time.Now()
+	
+	LogDebug("nvidia-smi path cached", "path", path, "cache_duration", NVIDIA_SMI_PATH_CACHE_DURATION)
+	return path
+}
+
+// getCachedGPUProcesses GPU 프로세스를 캐시에서 반환하거나 새로 수집
+func getCachedGPUProcesses() ([]GPUProcess, error) {
+	gpuProcessCache.mutex.RLock()
+	// 캐시가 유효한 경우 캐시된 프로세스 반환
+	if time.Since(gpuProcessCache.lastUpdated) < GPU_PROCESS_CACHE_DURATION {
+		processes := make([]GPUProcess, len(gpuProcessCache.processes))
+		copy(processes, gpuProcessCache.processes)
+		gpuProcessCache.mutex.RUnlock()
+		LogDebug("GPU processes returned from cache", "count", len(processes), "age", time.Since(gpuProcessCache.lastUpdated))
+		return processes, nil
+	}
+	gpuProcessCache.mutex.RUnlock()
+
+	// 캐시가 만료된 경우 새로 수집하고 캐시 업데이트
+	gpuProcessCache.mutex.Lock()
+	defer gpuProcessCache.mutex.Unlock()
+	
+	// 다시 한번 확인 (다른 고루틴이 업데이트했을 수도 있음)
+	if time.Since(gpuProcessCache.lastUpdated) < GPU_PROCESS_CACHE_DURATION {
+		processes := make([]GPUProcess, len(gpuProcessCache.processes))
+		copy(processes, gpuProcessCache.processes)
+		LogDebug("GPU processes returned from cache (double-check)", "count", len(processes))
+		return processes, nil
+	}
+	
+	// 새로 수집
+	processes, err := getGPUProcessesUncached()
+	if err != nil {
+		LogError("Failed to collect GPU processes for cache", "error", err)
+		return nil, err
+	}
+	
+	// 캐시 업데이트
+	gpuProcessCache.processes = make([]GPUProcess, len(processes))
+	copy(gpuProcessCache.processes, processes)
+	gpuProcessCache.lastUpdated = time.Now()
+	
+	LogInfo("GPU processes collected and cached", "count", len(processes), "cache_duration", GPU_PROCESS_CACHE_DURATION)
+	return processes, nil
+}
+
+// getCachedGPUInfo GPU 정보를 캐시에서 반환하거나 새로 수집
+func getCachedGPUInfo() (*GPUInfo, error) {
+	gpuInfoCache.mutex.RLock()
+	// 캐시가 유효한 경우 캐시된 정보 반환
+	if time.Since(gpuInfoCache.lastUpdated) < GPU_INFO_CACHE_DURATION && gpuInfoCache.info != nil {
+		info := *gpuInfoCache.info // 값 복사
+		gpuInfoCache.mutex.RUnlock()
+		LogDebug("GPU info returned from cache", "name", info.Name, "age", time.Since(gpuInfoCache.lastUpdated))
+		return &info, nil
+	}
+	gpuInfoCache.mutex.RUnlock()
+
+	// 캐시가 만료된 경우 새로 수집하고 캐시 업데이트
+	gpuInfoCache.mutex.Lock()
+	defer gpuInfoCache.mutex.Unlock()
+	
+	// 다시 한번 확인
+	if time.Since(gpuInfoCache.lastUpdated) < GPU_INFO_CACHE_DURATION && gpuInfoCache.info != nil {
+		info := *gpuInfoCache.info
+		return &info, nil
+	}
+	
+	// 새로 수집
+	info, err := getGPUInfoUncached()
+	if err != nil {
+		LogError("Failed to collect GPU info for cache", "error", err)
+		return nil, err
+	}
+	
+	// 캐시 업데이트
+	gpuInfoCache.info = info
+	gpuInfoCache.lastUpdated = time.Now()
+	
+	LogInfo("GPU info collected and cached", "name", info.Name, "cache_duration", GPU_INFO_CACHE_DURATION)
+	return info, nil
+}
+
+// getCachedVideoControllers WMI VideoController 정보를 캐시에서 반환하거나 새로 수집
+func getCachedVideoControllers() ([]string, error) {
+	videoControllerCache.mutex.RLock()
+	// 캐시가 유효한 경우 캐시된 정보 반환
+	if time.Since(videoControllerCache.lastUpdated) < VIDEO_CONTROLLER_CACHE_DURATION && len(videoControllerCache.controllers) > 0 {
+		controllers := make([]string, len(videoControllerCache.controllers))
+		copy(controllers, videoControllerCache.controllers)
+		videoControllerCache.mutex.RUnlock()
+		LogDebug("VideoControllers returned from cache", "count", len(controllers), "age", time.Since(videoControllerCache.lastUpdated))
+		return controllers, nil
+	}
+	videoControllerCache.mutex.RUnlock()
+
+	// 캐시가 만료된 경우 새로 수집하고 캐시 업데이트
+	videoControllerCache.mutex.Lock()
+	defer videoControllerCache.mutex.Unlock()
+	
+	// 다시 한번 확인
+	if time.Since(videoControllerCache.lastUpdated) < VIDEO_CONTROLLER_CACHE_DURATION && len(videoControllerCache.controllers) > 0 {
+		controllers := make([]string, len(videoControllerCache.controllers))
+		copy(controllers, videoControllerCache.controllers)
+		return controllers, nil
+	}
+	
+	// WMI로 모든 VideoController 정보 한 번에 수집
+	if runtime.GOOS == "windows" {
+		cmd := createHiddenCommand("wmic", "path", "win32_VideoController", "get", "Name,AdapterRAM", "/format:csv")
+		output, err := cmd.Output()
+		if err != nil {
+			LogError("Failed to collect VideoController data for cache", "error", err)
+			return nil, err
+		}
+		
+		// 결과 파싱
+		lines := strings.Split(string(output), "\n")
+		controllers := []string{}
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line != "" && !strings.Contains(line, "Node") && !strings.Contains(line, "AdapterRAM") {
+				controllers = append(controllers, strings.ToLower(line))
+			}
+		}
+		
+		// 캐시 업데이트
+		videoControllerCache.controllers = controllers
+		videoControllerCache.lastUpdated = time.Now()
+		
+		LogInfo("VideoControllers collected and cached", "count", len(controllers), "cache_duration", VIDEO_CONTROLLER_CACHE_DURATION)
+		return controllers, nil
+	}
+	
+	return []string{}, nil
+}
+
+// clearAllCaches 모든 캐시를 강제로 초기화 (테스트/디버깅 용도)
+func clearAllCaches() {
+	gpuProcessCache.mutex.Lock()
+	gpuProcessCache.processes = nil
+	gpuProcessCache.lastUpdated = time.Time{}
+	gpuProcessCache.mutex.Unlock()
+	
+	gpuInfoCache.mutex.Lock()
+	gpuInfoCache.info = nil
+	gpuInfoCache.lastUpdated = time.Time{}
+	gpuInfoCache.mutex.Unlock()
+	
+	nvidiaSMIPathCache.mutex.Lock()
+	nvidiaSMIPathCache.path = ""
+	nvidiaSMIPathCache.lastChecked = time.Time{}
+	nvidiaSMIPathCache.mutex.Unlock()
+	
+	videoControllerCache.mutex.Lock()
+	videoControllerCache.controllers = nil
+	videoControllerCache.lastUpdated = time.Time{}
+	videoControllerCache.mutex.Unlock()
+	
+	LogInfo("All caches cleared (including WMI VideoController cache)")
+}
+
 // isWMIAccessible checks if WMI queries are accessible
 func isWMIAccessible() bool {
 	cmd := createHiddenCommand("wmic", "computersystem", "get", "model", "/format:csv")
@@ -1178,7 +1409,13 @@ func getBatteryStatusWindows() (*BatteryInfo, error) {
 	}, nil
 }
 
+// getGPUInfo 캐시된 GPU 정보 반환 (CPU 최적화)
 func getGPUInfo() (*GPUInfo, error) {
+	return getCachedGPUInfo()
+}
+
+// getGPUInfoUncached 캐시 없이 직접 GPU 정보 수집 (원본 로직)
+func getGPUInfoUncached() (*GPUInfo, error) {
 	switch runtime.GOOS {
 	case "windows":
 		return getGPUInfoWindows()
@@ -1358,12 +1595,12 @@ func detectNVIDIAGPU() (*GPUInfo, error) {
 // getNVIDIASMIInfo - nvidia-smi를 통한 정보 수집 (기존 로직 개선)
 func getNVIDIASMIInfo() (*GPUInfo, error) {
 	// Find nvidia-smi path first
-	nvidiaSMIPath := findNVIDIASMIPath()
+	nvidiaSMIPath := getCachedNVIDIASMIPath()
 	if nvidiaSMIPath == "" {
 		return nil, fmt.Errorf("nvidia-smi not found in any common locations")
 	}
 	
-	LogDebug("Using nvidia-smi path for GPU info", "path", nvidiaSMIPath)
+	LogDebug("Using cached nvidia-smi path for GPU info", "path", nvidiaSMIPath)
 	
 	// nvidia-smi 명령어 사용
 	cmd := createHiddenCommand(nvidiaSMIPath, "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw", "--format=csv,noheader,nounits")
@@ -1717,18 +1954,18 @@ func parseNVIDIAProcesses() ([]GPUProcess, error) {
 // parseNVIDIAProcessesPmon은 nvidia-smi pmon 방식으로 직접 GPU 프로세스를 검색합니다 (캐시 없음)
 func parseNVIDIAProcessesPmon() ([]GPUProcess, error) {
 	LogDebug("Direct nvidia-smi pmon process detection (no cache)")
-	return parseNVIDIAProcessesWithRetry(3, 500)
+	return parseNVIDIAProcessesWithRetry(1, 200)  // CPU 최적화: 재시도 1회로 감소, 지연시간 단축
 }
 
 // parseNVIDIAProcessesWithRetry는 재시도 로직이 포함된 GPU 프로세스 파싱 함수입니다.
 func parseNVIDIAProcessesWithRetry(maxRetries int, delayMs int) ([]GPUProcess, error) {
 	// Find nvidia-smi path first
-	nvidiaSMIPath := findNVIDIASMIPath()
+	nvidiaSMIPath := getCachedNVIDIASMIPath()
 	if nvidiaSMIPath == "" {
 		return nil, fmt.Errorf("nvidia-smi not found in any common locations")
 	}
 	
-	LogDebug("Using nvidia-smi path for process monitoring", "path", nvidiaSMIPath)
+	LogDebug("Using cached nvidia-smi path for process monitoring", "path", nvidiaSMIPath)
 	
 	var lastErr error
 	for attempt := 0; attempt <= maxRetries; attempt++ {
@@ -1811,13 +2048,13 @@ func parseNVIDIAProcessOutput(output []byte) ([]GPUProcess, error) {
 
 // parseNVIDIAProcessesAlternative는 nvidia-smi --query-compute-apps를 사용한 대안 파싱 방법입니다.
 func parseNVIDIAProcessesAlternative() ([]GPUProcess, error) {
-	return parseNVIDIAProcessesAlternativeWithRetry(3, 500) // 3회 재시도, 500ms 간격
+	return parseNVIDIAProcessesAlternativeWithRetry(1, 200) // CPU 최적화: 1회 재시도, 200ms 간격
 }
 
 // parseNVIDIAProcessesAlternativeWithRetry는 재시도 로직이 포함된 대안 GPU 프로세스 파싱 함수입니다.
 func parseNVIDIAProcessesAlternativeWithRetry(maxRetries int, delayMs int) ([]GPUProcess, error) {
-	// Find nvidia-smi path
-	nvidiaSMIPath := findNVIDIASMIPath()
+	// Find nvidia-smi path using cache
+	nvidiaSMIPath := getCachedNVIDIASMIPath()
 	if nvidiaSMIPath == "" {
 		return nil, fmt.Errorf("nvidia-smi not found in any common locations")
 	}
@@ -2044,8 +2281,8 @@ func parseNVIDIAAlternativeOutput(output []byte, totalGPUUsage float64) ([]GPUPr
 
 // parseNVIDIAProcessesGraphics uses nvidia-smi query-graphics-apps for process detection
 func parseNVIDIAProcessesGraphics() ([]GPUProcess, error) {
-	// Find nvidia-smi path
-	nvidiaSMIPath := findNVIDIASMIPath()
+	// Find nvidia-smi path using cache
+	nvidiaSMIPath := getCachedNVIDIASMIPath()
 	if nvidiaSMIPath == "" {
 		return nil, fmt.Errorf("nvidia-smi not found in any common locations")
 	}
@@ -2254,9 +2491,9 @@ func parseWindowsPerformanceCounters() ([]GPUProcess, error) {
 	processes := parsePerformanceCounterData(memoryOutput, utilizationOutput)
 	
 	if len(processes) == 0 {
-		LogWarn("No GPU processes found in Performance Counter data - attempting hybrid fallback")
-		// Performance Counters 실패 시 nvidia-smi 데이터와 병합 시도
-		return tryHybridGPUProcessCollection()
+		LogWarn("No GPU processes found in Performance Counter data - using simple nvidia-smi fallback")
+		// CPU 최적화: 복잡한 hybrid 방식 대신 간단한 nvidia-smi 호출
+		return parseNVIDIAProcessesAlternative()
 	}
 	
 	LogInfo("Windows Performance Counters GPU detection completed", 
@@ -2529,8 +2766,8 @@ func getProcessNameByPID(pid int) string {
 
 // getCurrentGPUUsage gets the current total GPU utilization
 func getCurrentGPUUsage() (float64, error) {
-	// Find nvidia-smi path
-	nvidiaSMIPath := findNVIDIASMIPath()
+	// Find nvidia-smi path using cache
+	nvidiaSMIPath := getCachedNVIDIASMIPath()
 	if nvidiaSMIPath == "" {
 		LogWarn("nvidia-smi path not found for GPU utilization query")
 		return 0, fmt.Errorf("nvidia-smi not found in any common locations")
@@ -2662,7 +2899,13 @@ func getProcessNameUnix(pid int32) string {
 }
 
 // getGPUProcesses는 현재 GPU를 사용하는 모든 프로세스 목록을 반환합니다.
+// getGPUProcesses 캐시된 GPU 프로세스 반환 (CPU 최적화)
 func getGPUProcesses() ([]GPUProcess, error) {
+	return getCachedGPUProcesses()
+}
+
+// getGPUProcessesUncached 캐시 없이 직접 GPU 프로세스 수집 (원본 로직)
+func getGPUProcessesUncached() ([]GPUProcess, error) {
 	switch runtime.GOOS {
 	case "windows":
 		return getGPUProcessesWindows()
