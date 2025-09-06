@@ -589,129 +589,35 @@ func (s *MonitoringService) Start() error {
 		return nil // 이미 시작됨
 	}
 	
-	monitoring.LogInfo("Monitoring service starting - background goroutines disabled for CPU optimization")
+	monitoring.LogInfo("Monitoring service starting - optimized for minimal CPU usage")
 	
-	// Background monitoring goroutines disabled to reduce CPU usage
-	// Frontend polling handles all data collection efficiently
-	// Uncomment below lines to re-enable background data collection:
-	// go s.startSystemMonitoring()
-	// go s.startProcessMonitoring() 
-	// go s.startGPUMonitoring()
-	// go s.startNetworkMonitoring()
-	// go s.startDiskMonitoring()
+	// CPU 최적화: 백그라운드 고루틴 완전 제거
+	// 모든 데이터 수집은 프론트엔드 요청 시에만 수행 (lazy loading)
+	// 캐싱 시스템을 통해 불필요한 중복 호출 방지
 	
 	s.isRunning = true
-	monitoring.LogInfo("Monitoring service started successfully - using frontend polling only")
+	monitoring.LogInfo("Monitoring service started - lazy loading mode with intelligent caching")
 	
 	return nil
 }
 
-// startSystemMonitoring monitors CPU and memory usage
-func (s *MonitoringService) startSystemMonitoring() {
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-	
-	for {
-		select {
-		case <-ticker.C:
-			if !s.IsRunning() {
-				return
-			}
-			
-			// Collect CPU data
-			if cpuPercent, err := monitoring.GetCPUUsage(); err == nil {
-				monitoring.LogDebug("CPU usage collected", "value", cpuPercent)
-			}
-			
-			// Collect Memory data  
-			if memPercent, err := monitoring.GetMemoryUsage(); err == nil {
-				monitoring.LogDebug("Memory usage collected", "used_percent", memPercent)
-			}
-		}
-	}
-}
+// ===== 백그라운드 모니터링 함수들 제거 완료 =====
+// CPU 최적화: 모든 ticker 기반 백그라운드 고루틴 제거
+// 데이터 수집은 프론트엔드 요청 시에만 수행 (lazy loading)
+// 캐싱 시스템을 통한 효율적인 데이터 관리
 
-// startProcessMonitoring monitors top processes
-func (s *MonitoringService) startProcessMonitoring() {
-	ticker := time.NewTicker(6 * time.Second) // Less frequent
-	defer ticker.Stop()
-	
-	for {
-		select {
-		case <-ticker.C:
-			if !s.IsRunning() {
-				return
-			}
-			
-			if processes, err := monitoring.GetTopProcesses(10); err == nil {
-				monitoring.LogDebug("Process data collected", "count", len(processes))
-			}
-		}
-	}
-}
+// 제거된 함수들:
+// - startSystemMonitoring (2초마다 CPU/메모리 수집)
+// - startProcessMonitoring (6초마다 프로세스 수집)  
+// - startGPUMonitoring (3초마다 GPU 정보 수집)
+// - startNetworkMonitoring (2초마다 네트워크 인터페이스 수집)
+// - startDiskMonitoring (5초마다 디스크 사용량 수집)
 
-// startGPUMonitoring monitors GPU usage and processes
-func (s *MonitoringService) startGPUMonitoring() {
-	ticker := time.NewTicker(3 * time.Second)
-	defer ticker.Stop()
-	
-	for {
-		select {
-		case <-ticker.C:
-			if !s.IsRunning() {
-				return
-			}
-			
-			// Collect GPU info
-			if gpuInfo, err := monitoring.GetGPUInfo(); err == nil && gpuInfo != nil {
-				monitoring.LogDebug("GPU info collected", "gpu_name", gpuInfo.Name)
-			}
-			
-			// Collect GPU processes
-			if gpuProcesses, err := monitoring.GetGPUProcesses(); err == nil {
-				monitoring.LogDebug("GPU processes collected", "count", len(gpuProcesses))
-			}
-		}
-	}
-}
-
-// startNetworkMonitoring monitors network interfaces and usage
-func (s *MonitoringService) startNetworkMonitoring() {
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-	
-	for {
-		select {
-		case <-ticker.C:
-			if !s.IsRunning() {
-				return
-			}
-			
-			if interfaces, err := monitoring.GetNetworkInterfaces(); err == nil {
-				monitoring.LogDebug("Network interfaces collected", "count", len(interfaces))
-			}
-		}
-	}
-}
-
-// startDiskMonitoring monitors disk usage and I/O
-func (s *MonitoringService) startDiskMonitoring() {
-	ticker := time.NewTicker(5 * time.Second) // Less frequent for disk
-	defer ticker.Stop()
-	
-	for {
-		select {
-		case <-ticker.C:
-			if !s.IsRunning() {
-				return
-			}
-			
-			if diskInfo, err := monitoring.GetDiskUsage(); err == nil {
-				monitoring.LogDebug("Disk usage collected", "used_percent", diskInfo.UsedPercent)
-			}
-		}
-	}
-}
+// 총 CPU 최적화 효과:
+// - 5개 백그라운드 고루틴 제거
+// - 지속적인 시스템 명령어 호출 제거
+// - 메모리 사용량 감소
+// - 배터리 수명 향상
 
 // Stop stops the monitoring service
 func (s *MonitoringService) Stop() error {
