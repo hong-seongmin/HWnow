@@ -121,7 +121,7 @@ const initialState: SystemResourceData = {
 
 export const useSystemResourceStore = create<SystemResourceState>((set) => ({
   data: initialState,
-  maxDataPoints: 200, // Default max points
+  maxDataPoints: 50, // CPU 최적화: 200 → 50 포인트로 감소 (메모리 사용량 75% 감소)
   setGPUProcesses: (processes) => {
     set((state) => ({
       data: {

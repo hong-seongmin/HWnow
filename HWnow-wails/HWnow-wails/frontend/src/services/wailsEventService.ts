@@ -93,7 +93,7 @@ export class WailsEventService {
   
   private getDefaultConfig(): EventServiceConfig {
     return {
-      pollingInterval: 6000, // 6 seconds (further reduced to minimize nvidia-smi load)
+      pollingInterval: 10000, // CPU 최적화: 6초 → 10초 (백엔드 캐싱으로 더 긴 간격 가능)
       batchProcessingDelay: 300,
       maxRetries: 2, // Reduced retries
       adaptivePolling: true,
@@ -550,8 +550,8 @@ export class WailsEventService {
       }
     };
     
-    // GPU info polling - moderate frequency
-    const intervalId = setInterval(pollGPUInfo, this.config.pollingInterval * 3); // Every 15 seconds (reduced CPU usage)
+    // GPU info polling - low frequency (캐싱으로 인해 더 낮은 빈도 가능)
+    const intervalId = setInterval(pollGPUInfo, this.config.pollingInterval * 6); // CPU 최적화: 15초 → 60초 (1분)
     this.pollingIntervals.set('gpu_info', intervalId);
     
     // Initial call
@@ -611,8 +611,8 @@ export class WailsEventService {
       }
     };
     
-    // GPU process polling - moderate frequency with caching support
-    const intervalId = setInterval(pollGPUProcesses, this.config.pollingInterval * 2); // Every 12 seconds (with caching, less frequent polling is acceptable)
+    // GPU process polling - low frequency with caching support  
+    const intervalId = setInterval(pollGPUProcesses, this.config.pollingInterval * 3); // CPU 최적화: 12초 → 30초 (캐싱으로 더 낮은 빈도 가능)
     this.pollingIntervals.set('gpu_processes', intervalId);
     
     // Initial call
@@ -666,10 +666,10 @@ export class WailsEventService {
       }
     };
     
-    // Process polling - moderate frequency
-    const intervalId = setInterval(pollTopProcesses, this.config.pollingInterval * 4); // Every 20 seconds (reduced CPU usage)
+    // Process polling - low frequency 
+    const intervalId = setInterval(pollTopProcesses, this.config.pollingInterval * 6); // CPU 최적화: 20초 → 60초 (1분)
     this.pollingIntervals.set('top_processes', intervalId);
-    console.log('[WailsEvents] Top process polling interval set - every', this.config.pollingInterval * 4, 'ms');
+    console.log('[WailsEvents] Top process polling interval set - every', this.config.pollingInterval * 6, 'ms');
     
     // Initial call
     console.log('[WailsEvents] Making initial top process polling call...');
