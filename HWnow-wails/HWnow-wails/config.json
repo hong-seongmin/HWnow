@@ -7,10 +7,10 @@
     "filename": "monitoring.db"
   },
   "monitoring": {
-    "interval_seconds": 2,
-    "security_check_seconds": 30,
-    "gpu_info_cache_seconds": 30,
-    "registry_cache_seconds": 60,
+    "interval_seconds": 60,
+    "security_check_seconds": 1800,
+    "gpu_info_cache_seconds": 600,
+    "registry_cache_seconds": 3600,
     "enable_cpu_monitoring": true,
     "enable_memory_monitoring": true,
     "enable_disk_monitoring": true,

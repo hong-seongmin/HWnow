@@ -211,15 +211,25 @@ func (a *App) Greet(name string) string {
 
 // LoadConfig loads configuration from file or returns default config
 func LoadConfig(configPath string) (*Config, error) {
+	// CPU 최적화 Phase Final: config.json 로딩 검증 및 상세 로그 추가
+	fmt.Printf("[Config] Loading config from: %s\n", configPath)
+	
 	// 파일이 존재하지 않으면 기본 설정 반환
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		fmt.Printf("[Config] Config file not found, using default config\n")
 		config := getDefaultConfig()
+		fmt.Printf("[Config] Default monitoring intervals - CPU: %ds, Security: %ds, GPU: %ds, Registry: %ds\n",
+			config.Monitoring.IntervalSeconds,
+			config.Monitoring.SecurityCheckSeconds,
+			config.Monitoring.GPUInfoCacheSeconds,
+			config.Monitoring.RegistryCacheSeconds)
 		return &config, nil
 	}
 	
 	// 파일이 존재하면 로드 시도
 	data, err := os.ReadFile(configPath)
 	if err != nil {
+		fmt.Printf("[Config] Failed to read config file: %v, using default config\n", err)
 		// 파일 읽기 실패 시 기본 설정 반환
 		config := getDefaultConfig()
 		return &config, nil
@@ -227,10 +237,24 @@ func LoadConfig(configPath string) (*Config, error) {
 	
 	var config Config
 	if err := json.Unmarshal(data, &config); err != nil {
+		fmt.Printf("[Config] Failed to parse JSON config: %v, using default config\n", err)
 		// JSON 파싱 실패 시 기본 설정 반환
 		defaultConfig := getDefaultConfig()
 		return &defaultConfig, nil
 	}
+	
+	// 로드 성공 시 실제 설정값 출력
+	fmt.Printf("[Config] Successfully loaded config.json\n")
+	fmt.Printf("[Config] Monitoring intervals - CPU: %ds, Security: %ds, GPU: %ds, Registry: %ds\n",
+		config.Monitoring.IntervalSeconds,
+		config.Monitoring.SecurityCheckSeconds,
+		config.Monitoring.GPUInfoCacheSeconds,
+		config.Monitoring.RegistryCacheSeconds)
+	fmt.Printf("[Config] Monitoring flags - CPU: %t, Memory: %t, Disk: %t, Network: %t\n",
+		config.Monitoring.EnableCpuMonitoring,
+		config.Monitoring.EnableMemoryMonitoring,
+		config.Monitoring.EnableDiskMonitoring,
+		config.Monitoring.EnableNetworkMonitoring)
 	
 	return &config, nil
 }
@@ -246,10 +270,10 @@ func getDefaultConfig() Config {
 			Filename: "monitoring.db",
 		},
 		Monitoring: MonitoringConfig{
-			IntervalSeconds:         2,
-			SecurityCheckSeconds:    30,
-			GPUInfoCacheSeconds:     30,
-			RegistryCacheSeconds:    60,
+			IntervalSeconds:         120,  // CPU 최적화 Phase Final: 30초 → 2분 (극보수적 설정)
+			SecurityCheckSeconds:    3600, // CPU 최적화 Phase Final: 10분 → 1시간 (극보수적 설정)
+			GPUInfoCacheSeconds:     1800, // CPU 최적화 Phase Final: 5분 → 30분 (극보수적 설정)
+			RegistryCacheSeconds:    7200, // CPU 최적화 Phase Final: 30분 → 2시간 (극보수적 설정)
 			EnableCpuMonitoring:     true,
 			EnableMemoryMonitoring:  true,
 			EnableDiskMonitoring:    true,
@@ -542,6 +566,48 @@ func (a *App) GetGPUProcesses() ([]monitoring.GPUProcess, error) {
 	return processes, nil
 }
 
+// Phase 1.1: Backend pre-computed GPU process filtering and sorting
+func (a *App) GetGPUProcessesFiltered(query monitoring.GPUProcessQuery) (*monitoring.GPUProcessResponse, error) {
+	response, err := monitoring.GetGPUProcessesFiltered(query)
+	if err != nil {
+		monitoring.LogError("Failed to get filtered GPU processes", "error", err, "query", query)
+		return nil, err
+	}
+	
+	monitoring.LogInfo("Filtered GPU processes retrieved successfully", 
+		"total_count", response.TotalCount,
+		"filtered_count", response.FilteredCount,
+		"returned_count", len(response.Processes),
+		"query_time_ms", response.QueryTime)
+	
+	return response, nil
+}
+
+// Phase 1.2: Delta update system for GPU processes
+func (a *App) GetGPUProcessesDelta(lastUpdateID string) (*monitoring.GPUProcessDeltaResponse, error) {
+	response, err := monitoring.GetGPUProcessesDelta(lastUpdateID)
+	if err != nil {
+		monitoring.LogError("Failed to get GPU processes delta", "error", err, "last_update_id", lastUpdateID)
+		return nil, err
+	}
+	
+	if response.FullRefresh {
+		monitoring.LogInfo("GPU processes delta - full refresh", 
+			"total_count", response.TotalCount,
+			"query_time_ms", response.QueryTime)
+	} else if response.Delta != nil {
+		monitoring.LogInfo("GPU processes delta retrieved successfully", 
+			"added", len(response.Delta.Added),
+			"updated", len(response.Delta.Updated),
+			"removed", len(response.Delta.Removed),
+			"total_count", response.TotalCount,
+			"query_time_ms", response.QueryTime,
+			"new_update_id", response.Delta.UpdateID)
+	}
+	
+	return response, nil
+}
+
 // GetTopProcesses returns top processes by resource usage with validation
 func (a *App) GetTopProcesses(count int) ([]monitoring.ProcessInfo, error) {
 	// 입력 유효성 검사
@@ -732,9 +798,15 @@ func (a *App) ResumeGPUProcess(pid int32) *GPUProcessControlResult {
 
 // SetGPUProcessPriority sets GPU process priority using the optimized service architecture
 func (a *App) SetGPUProcessPriority(pid int32, priority string) *GPUProcessControlResult {
-	return a.gpuProcessControlService.executeProcessControl(pid, "set_priority", priority, func(pid int32) error {
-		return monitoring.SetGPUProcessPriority(pid, priority)
-	})
+    return a.gpuProcessControlService.executeProcessControl(pid, "set_priority", priority, func(pid int32) error {
+        return monitoring.SetGPUProcessPriority(pid, priority)
+    })
+}
+
+// SetGPUProcessMonitoring enables or disables backend GPU process data collection
+func (a *App) SetGPUProcessMonitoring(enabled bool) {
+    monitoring.LogInfo("Frontend requested GPU process monitoring toggle", "enabled", enabled)
+    monitoring.SetGPUProcessMonitoringEnabled(enabled)
 }
 
 // ValidateGPUProcess validates if a process is a valid GPU process with optimized service architecture
