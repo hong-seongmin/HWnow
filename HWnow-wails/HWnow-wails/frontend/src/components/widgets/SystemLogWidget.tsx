@@ -61,10 +61,13 @@ const SystemLogWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded
       setLogs(mockLogs);
     };
 
+    // CPU 최적화: Mock 데이터 생성 완전 비활성화
+    // generateMockLogs();
+    // const interval = setInterval(generateMockLogs, 300000);
+    // return () => clearInterval(interval);
+    
+    // 정적 mock 데이터 한 번만 설정
     generateMockLogs();
-    const interval = setInterval(generateMockLogs, 30000); // 30초마다 업데이트
-
-    return () => clearInterval(interval);
   }, []);
 
   // 로그 필터링
