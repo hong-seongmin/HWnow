@@ -148,6 +148,8 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now());
   const [isConnected, setIsConnected] = useState<boolean>(true);
+  const [selectedProcesses, setSelectedProcesses] = useState<Set<number>>(new Set());
+  const [isTerminating, setIsTerminating] = useState<Set<number>>(new Set());
   
   const widgetRef = useRef<HTMLDivElement>(null);
   
@@ -257,6 +259,143 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
   const handleSettingsSave = useCallback(() => {
     setIsSettingsOpen(false);
   }, []);
+  
+  const { showToast } = useToast();
+  const { confirmDialog } = useConfirmDialog();
+  
+  // 정렬 헤더 클릭 핸들러
+  const handleSort = useCallback((column: string) => {
+    const { actions } = useDashboardStore.getState();
+    const newSortOrder = sortBy === column && sortOrder === 'desc' ? 'asc' : 'desc';
+    actions.updateWidgetConfig(widgetId, { 
+      gpuSortBy: column,
+      gpuSortOrder: newSortOrder
+    });
+  }, [sortBy, sortOrder, widgetId]);
+  
+  // 프로세스 선택 핸들러
+  const handleProcessSelect = useCallback((pid: number, isSelected: boolean) => {
+    setSelectedProcesses(prev => {
+      const newSet = new Set(prev);
+      if (isSelected) {
+        newSet.add(pid);
+      } else {
+        newSet.delete(pid);
+      }
+      return newSet;
+    });
+  }, []);
+  
+  // 전체 선택/해제
+  const handleSelectAll = useCallback(() => {
+    if (selectedProcesses.size === sortedProcesses.length) {
+      setSelectedProcesses(new Set());
+    } else {
+      setSelectedProcesses(new Set(sortedProcesses.map(p => p.pid)));
+    }
+  }, [selectedProcesses.size, sortedProcesses]);
+  
+  // 프로세스 강제종료
+  const handleTerminateProcess = useCallback(async (pid: number, processName: string) => {
+    const confirmed = await confirmDialog({
+      title: 'Terminate GPU Process',
+      message: `Are you sure you want to terminate process:\n\n${processName} (PID: ${pid})?\n\nThis action cannot be undone and may cause data loss.`,
+      confirmText: 'Terminate',
+      cancelText: 'Cancel',
+      type: 'danger'
+    });
+    
+    if (!confirmed) return;
+    
+    setIsTerminating(prev => new Set([...prev, pid]));
+    
+    try {
+      const result = await killGPUProcess(pid);
+      if (result.success) {
+        showToast(`Process ${processName} (PID: ${pid}) terminated successfully`, 'success');
+        setSelectedProcesses(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(pid);
+          return newSet;
+        });
+      } else {
+        showToast(`Failed to terminate process: ${result.message}`, 'error');
+      }
+    } catch (error) {
+      console.error('Failed to terminate process:', error);
+      showToast(`Failed to terminate process: ${error}`, 'error');
+    } finally {
+      setIsTerminating(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(pid);
+        return newSet;
+      });
+    }
+  }, [confirmDialog, showToast]);
+  
+  // 선택된 프로세스들 강제종료
+  const handleTerminateSelected = useCallback(async () => {
+    if (selectedProcesses.size === 0) return;
+    
+    const processNames = sortedProcesses
+      .filter(p => selectedProcesses.has(p.pid))
+      .map(p => `${abbreviateProcessName(p.name)} (PID: ${p.pid})`)
+      .join('\n');
+    
+    const confirmed = await confirmDialog({
+      title: `Terminate ${selectedProcesses.size} GPU Processes`,
+      message: `Are you sure you want to terminate the following processes?\n\n${processNames}\n\nThis action cannot be undone and may cause data loss.`,
+      confirmText: `Terminate ${selectedProcesses.size} Processes`,
+      cancelText: 'Cancel',
+      type: 'danger'
+    });
+    
+    if (!confirmed) return;
+    
+    const pidsToTerminate = Array.from(selectedProcesses);
+    setIsTerminating(prev => new Set([...prev, ...pidsToTerminate]));
+    
+    let successCount = 0;
+    let failCount = 0;
+    
+    for (const pid of pidsToTerminate) {
+      try {
+        const result = await killGPUProcess(pid);
+        if (result.success) {
+          successCount++;
+        } else {
+          failCount++;
+        }
+      } catch (error) {
+        console.error(`Failed to terminate process ${pid}:`, error);
+        failCount++;
+      }
+    }
+    
+    setIsTerminating(new Set());
+    setSelectedProcesses(new Set());
+    
+    if (successCount > 0) {
+      showToast(`Successfully terminated ${successCount} processes`, 'success');
+    }
+    if (failCount > 0) {
+      showToast(`Failed to terminate ${failCount} processes`, 'error');
+    }
+  }, [selectedProcesses, sortedProcesses, confirmDialog, showToast]);
+  
+  // 정렬 아이콘 렌더링
+  const renderSortIcon = useCallback((column: string) => {
+    if (sortBy !== column) {
+      return (
+        <span style={{ opacity: 0.3, marginLeft: '0.25rem' }}>↕️</span>
+      );
+    }
+    return (
+      <span style={{ marginLeft: '0.25rem' }}>
+        {sortOrder === 'asc' ? '↑' : '↓'}
+      </span>
+    );
+  }, [sortBy, sortOrder]);
   
   if (isEmpty) {
     return (
@@ -499,23 +638,140 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
             </div>
           </div>
           
+          {/* Process List Header */}
+          <div className="process-list-header" style={{
+            display: 'grid',
+            gridTemplateColumns: 'auto 1fr auto auto auto',
+            gap: 'var(--spacing-sm)',
+            padding: 'var(--spacing-sm)',
+            backgroundColor: 'var(--color-background-tertiary)',
+            borderBottom: '2px solid var(--color-border)',
+            fontWeight: 600,
+            fontSize: '0.75rem',
+            color: 'var(--color-text-secondary)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <input
+                type="checkbox"
+                checked={selectedProcesses.size === sortedProcesses.length && sortedProcesses.length > 0}
+                onChange={handleSelectAll}
+                style={{ margin: 0 }}
+                aria-label="Select all processes"
+              />
+            </div>
+            <div 
+              className="sortable-header"
+              onClick={() => handleSort('name')}
+              style={{ 
+                cursor: 'pointer', 
+                display: 'flex', 
+                alignItems: 'center',
+                userSelect: 'none'
+              }}
+            >
+              Process Name
+              {renderSortIcon('name')}
+            </div>
+            <div 
+              className="sortable-header"
+              onClick={() => handleSort('gpu_usage')}
+              style={{ 
+                cursor: 'pointer', 
+                textAlign: 'center',
+                display: 'flex', 
+                alignItems: 'center',
+                justifyContent: 'center',
+                userSelect: 'none'
+              }}
+            >
+              GPU Usage
+              {renderSortIcon('gpu_usage')}
+            </div>
+            <div 
+              className="sortable-header"
+              onClick={() => handleSort('gpu_memory')}
+              style={{ 
+                cursor: 'pointer', 
+                textAlign: 'center',
+                display: 'flex', 
+                alignItems: 'center',
+                justifyContent: 'center',
+                userSelect: 'none'
+              }}
+            >
+              VRAM
+              {renderSortIcon('gpu_memory')}
+            </div>
+            <div style={{ textAlign: 'center' }}>Actions</div>
+          </div>
+          
+          {/* Selected Actions Bar */}
+          {selectedProcesses.size > 0 && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: 'var(--spacing-sm)',
+              backgroundColor: 'var(--color-warning-bg)',
+              borderBottom: '1px solid var(--color-warning)',
+              fontSize: '0.875rem'
+            }}>
+              <span>
+                {selectedProcesses.size} process{selectedProcesses.size > 1 ? 'es' : ''} selected
+              </span>
+              <button
+                onClick={handleTerminateSelected}
+                disabled={isTerminating.size > 0}
+                style={{
+                  padding: 'var(--spacing-xs) var(--spacing-sm)',
+                  backgroundColor: 'var(--color-danger)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 'var(--border-radius-sm)',
+                  cursor: 'pointer',
+                  fontSize: '0.75rem',
+                  fontWeight: 500,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.25rem',
+                  opacity: isTerminating.size > 0 ? 0.6 : 1
+                }}
+              >
+                {isTerminating.size > 0 && <ButtonSpinner size="sm" />}
+                Terminate Selected
+              </button>
+            </div>
+          )}
+          
           {/* Process List */}
           <div className="process-list" role="table" aria-label="GPU process list">
             {sortedProcesses.map((process, index) => (
               <div 
                 key={`gpu-process-${process.pid}-${index}`}
-                className="process-item"
+                className={`process-item ${selectedProcesses.has(process.pid) ? 'selected' : ''}`}
                 role="row"
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '1fr auto auto',
+                  gridTemplateColumns: 'auto 1fr auto auto auto',
                   gap: 'var(--spacing-sm)',
                   padding: 'var(--spacing-sm)',
                   borderBottom: '1px solid var(--color-border)',
                   alignItems: 'center',
-                  transition: 'background-color 0.2s ease'
+                  transition: 'background-color 0.2s ease',
+                  backgroundColor: selectedProcesses.has(process.pid) ? 'var(--color-primary-bg)' : 'transparent'
                 }}
               >
+                <div role="cell" style={{ display: 'flex', alignItems: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedProcesses.has(process.pid)}
+                    onChange={(e) => handleProcessSelect(process.pid, e.target.checked)}
+                    style={{ margin: 0 }}
+                    aria-label={`Select process ${process.name} (PID: ${process.pid})`}
+                  />
+                </div>
                 <div role="cell">
                   <div 
                     style={{ 
@@ -542,7 +798,7 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
                     PID: {process.pid} • {process.status}
                   </div>
                 </div>
-                <div role="cell" style={{ textAlign: 'right' }}>
+                <div role="cell" style={{ textAlign: 'center' }}>
                   <div style={{ 
                     fontSize: '0.875rem', 
                     fontWeight: 500,
@@ -557,7 +813,7 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
                     GPU
                   </div>
                 </div>
-                <div role="cell" style={{ textAlign: 'right' }}>
+                <div role="cell" style={{ textAlign: 'center' }}>
                   <div style={{ 
                     fontSize: '0.875rem', 
                     fontWeight: 500,
@@ -571,6 +827,35 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
                   }}>
                     VRAM
                   </div>
+                </div>
+                <div role="cell" style={{ textAlign: 'center' }}>
+                  <button
+                    onClick={() => handleTerminateProcess(process.pid, process.name)}
+                    disabled={isTerminating.has(process.pid)}
+                    title={`Terminate ${abbreviateProcessName(process.name)} (PID: ${process.pid})`}
+                    style={{
+                      padding: 'var(--spacing-xs)',
+                      backgroundColor: 'var(--color-danger)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: 'var(--border-radius-sm)',
+                      cursor: isTerminating.has(process.pid) ? 'not-allowed' : 'pointer',
+                      fontSize: '0.75rem',
+                      fontWeight: 500,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minWidth: '60px',
+                      opacity: isTerminating.has(process.pid) ? 0.6 : 1,
+                      transition: 'opacity 0.2s ease'
+                    }}
+                  >
+                    {isTerminating.has(process.pid) ? (
+                      <ButtonSpinner size="sm" />
+                    ) : (
+                      '🗑️ Kill'
+                    )}
+                  </button>
                 </div>
               </div>
             ))}
