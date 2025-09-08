@@ -115,6 +115,7 @@ declare global {
           ResumeGPUProcess(pid: number): Promise<GPUProcessControlResponse>;
           SetGPUProcessPriority(pid: number, priority: string): Promise<GPUProcessControlResponse>;
           ValidateGPUProcess(pid: number): Promise<{ isValid: boolean; message: string; pid: number; processName?: string }>;
+          SetGPUProcessMonitoring(enabled: boolean): Promise<void>;
           
           // Database methods
           GetWidgets(userID: string, pageID: string): Promise<WidgetApiResponse>;
@@ -382,6 +383,13 @@ export class WailsApiService {
     );
   }
 
+  public async setGPUProcessMonitoring(enabled: boolean): Promise<void> {
+    await this.executeWailsCall(
+      () => window.go.main.App.SetGPUProcessMonitoring(enabled),
+      `SetGPUProcessMonitoring(${enabled})`
+    );
+  }
+
   public async validateGPUProcess(pid: number): Promise<{ isValid: boolean; message: string; pid: number; processName?: string }> {
     return this.executeWailsCall(
       () => window.go.main.App.ValidateGPUProcess(pid),
@@ -601,6 +609,7 @@ export const getGPUInfo = () => wailsApiService.getGPUInfo();
 export const getGPUProcesses = () => wailsApiService.getGPUProcesses();
 export const getTopProcesses = (count?: number) => wailsApiService.getTopProcesses(count);
 export const startMonitoring = () => wailsApiService.startMonitoring();
+export const setGPUProcessMonitoring = (enabled: boolean) => wailsApiService.setGPUProcessMonitoring(enabled);
 export const stopMonitoring = () => wailsApiService.stopMonitoring();
 export const isMonitoringRunning = () => wailsApiService.isMonitoringRunning();
 

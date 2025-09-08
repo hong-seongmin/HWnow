@@ -247,7 +247,14 @@ func UpdatePageName(db *sql.DB, userID, pageID, newName string) error {
 }
 
 // BatchInsertResourceLogs는 수집된 자원 모니터링 데이터를 일괄 삽입합니다.
+// CPU 최적화 Phase 5.1: 배치 삽입 고루틴 완전 비활성화
 func BatchInsertResourceLogs(snapshots <-chan *monitoring.ResourceSnapshot, db *sql.DB) {
+	// CPU 소모를 방지하기 위해 배치 삽입 무한 루프 비활성화
+	log.Println("CPU 최적화: 배치 DB 삽입 시스템 완전 비활성화됨 (1초 ticker 제거)")
+	return
+	
+	// 비활성화된 원본 코드 (CPU 소모 방지)
+	/*
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
@@ -304,4 +311,5 @@ func BatchInsertResourceLogs(snapshots <-chan *monitoring.ResourceSnapshot, db *
 			buffer = buffer[:0]
 		}
 	}
+	*/
 }

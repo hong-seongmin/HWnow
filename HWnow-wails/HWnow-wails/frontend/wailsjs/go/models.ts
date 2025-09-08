@@ -268,6 +268,185 @@ export namespace monitoring {
 	        this.status = source["status"];
 	    }
 	}
+	export class GPUProcessDelta {
+	    added: GPUProcess[];
+	    updated: GPUProcess[];
+	    removed: number[];
+	    update_id: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GPUProcessDelta(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.added = this.convertValues(source["added"], GPUProcess);
+	        this.updated = this.convertValues(source["updated"], GPUProcess);
+	        this.removed = source["removed"];
+	        this.update_id = source["update_id"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class GPUProcessDeltaResponse {
+	    delta?: GPUProcessDelta;
+	    full_refresh: boolean;
+	    total_count: number;
+	    query_time_ms: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new GPUProcessDeltaResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.delta = this.convertValues(source["delta"], GPUProcessDelta);
+	        this.full_refresh = source["full_refresh"];
+	        this.total_count = source["total_count"];
+	        this.query_time_ms = source["query_time_ms"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class GPUProcessFilter {
+	    usage_threshold: number;
+	    memory_threshold: number;
+	    filter_type: string;
+	    enabled: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new GPUProcessFilter(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.usage_threshold = source["usage_threshold"];
+	        this.memory_threshold = source["memory_threshold"];
+	        this.filter_type = source["filter_type"];
+	        this.enabled = source["enabled"];
+	    }
+	}
+	export class GPUProcessSort {
+	    field: string;
+	    order: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GPUProcessSort(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.field = source["field"];
+	        this.order = source["order"];
+	    }
+	}
+	export class GPUProcessQuery {
+	    filter: GPUProcessFilter;
+	    sort: GPUProcessSort;
+	    max_items: number;
+	    offset: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new GPUProcessQuery(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.filter = this.convertValues(source["filter"], GPUProcessFilter);
+	        this.sort = this.convertValues(source["sort"], GPUProcessSort);
+	        this.max_items = source["max_items"];
+	        this.offset = source["offset"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class GPUProcessResponse {
+	    processes: GPUProcess[];
+	    total_count: number;
+	    filtered_count: number;
+	    has_more: boolean;
+	    query_time_ms: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new GPUProcessResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.processes = this.convertValues(source["processes"], GPUProcess);
+	        this.total_count = source["total_count"];
+	        this.filtered_count = source["filtered_count"];
+	        this.has_more = source["has_more"];
+	        this.query_time_ms = source["query_time_ms"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class MemoryDetails {
 	    Physical: number;
 	    Virtual: number;

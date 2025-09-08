@@ -1507,6 +1507,19 @@
   }
 }
 
+/* ===== CPU Optimization: allow disabling animations at widget level ===== */
+.widget-gpu-process.animations-off,
+.widget-gpu-process.animations-off * {
+  animation: none !important;
+  transition: none !important;
+}
+
+.widget-gpu-process.animations-off .gpu-process-running::before,
+.widget-gpu-process.animations-off .gpu-process-suspended::before,
+.widget-gpu-process.animations-off .gpu-usage-critical::after {
+  animation: none !important;
+}
+
 /* ========================================
    Color-blind Accessibility Improvements
    ======================================== */

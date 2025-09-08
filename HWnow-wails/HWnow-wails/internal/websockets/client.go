@@ -32,12 +32,21 @@ type Client struct {
 }
 
 // writePump는 Hub로부터 받은 메시지를 WebSocket 연결로 전송합니다.
+// CPU 최적화: WebSocket 기반 백그라운드 작업 비활성화
 func (c *Client) writePump() {
-	ticker := time.NewTicker(pingPeriod)
+	// CPU 최적화: ticker 기반 ping 메커니즘 제거 (Wails에서는 불필요)
+	// ticker := time.NewTicker(pingPeriod)
 	defer func() {
-		ticker.Stop()
-		c.conn.Close()
+		// ticker.Stop() // 더 이상 사용하지 않음
+		if c.conn != nil {
+			c.conn.Close()
+		}
 	}()
+	
+	log.Printf("[WebSocket] writePump disabled for CPU optimization - Wails handles communication")
+	return // 백그라운드 프로세스 비활성화
+	
+	/* CPU 최적화: WebSocket 무한 루프 제거됨
 	for {
 		select {
 		case message, ok := <-c.send:
@@ -63,14 +72,25 @@ func (c *Client) writePump() {
 			}
 		}
 	}
+	*/ // WebSocket 무한 루프 주석 처리 끝
 }
 
 // readPump는 WebSocket 연결로부터 메시지를 읽어 Hub로 전달합니다 (현재는 사용하지 않음).
+// CPU 최적화: WebSocket readPump 백그라운드 작업 비활성화
 func (c *Client) readPump() {
 	defer func() {
-		c.hub.unregister <- c
-		c.conn.Close()
+		if c.hub != nil {
+			// c.hub.unregister <- c // 비활성화
+		}
+		if c.conn != nil {
+			c.conn.Close()
+		}
 	}()
+	
+	log.Printf("[WebSocket] readPump disabled for CPU optimization - Wails handles communication")
+	return // 백그라운드 프로세스 비활성화
+	
+	/* CPU 최적화: WebSocket readPump 무한 루프 제거됨
 	c.conn.SetReadLimit(maxMessageSize)
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(func(string) error { c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
@@ -83,10 +103,19 @@ func (c *Client) readPump() {
 			break
 		}
 	}
+	*/ // WebSocket readPump 무한 루프 주석 처리 끝
 }
 
 // ServeWs는 HTTP 연결을 WebSocket 연결로 업그레이드하고 클라이언트를 처리합니다.
+// CPU 최적화: WebSocket 서버 비활성화 (Wails에서는 불필요)
 func ServeWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
+	log.Printf("[WebSocket] ServeWs disabled for CPU optimization - Wails communication replaces WebSocket")
+	
+	// HTTP 에러 응답 반환 (WebSocket 사용 중단 알림)
+	http.Error(w, "WebSocket disabled for CPU optimization - using Wails communication", http.StatusServiceUnavailable)
+	return
+	
+	/* CPU 최적화: WebSocket 서버 기능 비활성화
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println(err)
@@ -97,4 +126,5 @@ func ServeWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 
 	go client.writePump()
 	go client.readPump()
+	*/
 }

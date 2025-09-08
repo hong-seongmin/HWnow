@@ -10,7 +10,7 @@ echo  HWnow Wails Application Launcher
 echo ===================================================================
 echo.
 echo  [1] Build and Run (Development)
-echo  [2] Build Production Executable
+echo  [2] Build Production Executable  
 echo  [3] Run Development Server
 echo  [4] Run Existing Wails Application
 echo.
@@ -134,28 +134,29 @@ goto :eof
 :build_and_run_dev
 echo [2/4] Building and running Wails application in development mode...
 
-cd HWnow-wails\HWnow-wails
+cd "HWnow-wails\HWnow-wails"
 
 :: Check if frontend dependencies are installed
 if not exist "frontend\node_modules" (
     echo [INFO] Installing frontend dependencies...
-    cd frontend
+    cd "frontend"
     npm install
     if errorlevel 1 (
         echo [ERROR] Failed to install frontend dependencies.
-        cd ..\..
+        cd "..\.."
         pause
         exit /b
     )
-    cd ..
+    cd ".."
 )
 
-:: Build and run with Wails using legacy WebView2 loader for compatibility
-echo [INFO] Starting Wails development build with legacy WebView2 loader...
-wails build -tags native_webview2loader
+:: Build and run with Wails with performance optimizations
+:: CPU optimization: Remove legacy WebView2 loader, add performance flags
+echo [INFO] Starting Wails optimized build with performance flags...
+wails build -ldflags "-s -w" -trimpath
 if errorlevel 1 (
     echo [ERROR] Failed to build Wails application.
-    cd ..\..
+    cd "..\.."
     pause
     exit /b
 )
@@ -174,34 +175,35 @@ if exist "build\bin\HWnow-wails.exe" (
     echo [ERROR] Built executable not found.
 )
 
-cd ..\..
+cd "..\.."
 goto :eof
 
 :build_production
 echo [2/4] Building production executable...
 
-cd HWnow-wails\HWnow-wails
+cd "HWnow-wails\HWnow-wails"
 
 :: Check if frontend dependencies are installed
 if not exist "frontend\node_modules" (
     echo [INFO] Installing frontend dependencies...
-    cd frontend
+    cd "frontend"
     npm install
     if errorlevel 1 (
         echo [ERROR] Failed to install frontend dependencies.
-        cd ..\..
+        cd "..\.."
         pause
         exit /b
     )
-    cd ..
+    cd ".."
 )
 
-:: Build production version with legacy WebView2 loader for compatibility
-echo [INFO] Building production executable with legacy WebView2 loader...
-wails build -clean -tags native_webview2loader
+:: Build production version with performance optimizations
+:: CPU optimization: Remove legacy WebView2 loader, add performance flags
+echo [INFO] Building production executable with performance optimizations...
+wails build -clean -ldflags "-s -w" -trimpath
 if errorlevel 1 (
     echo [ERROR] Failed to build production executable.
-    cd ..\..
+    cd "..\.."
     pause
     exit /b
 )
@@ -222,55 +224,71 @@ if exist "build\bin\HWnow-wails.exe" (
     echo [ERROR] Production executable not found.
 )
 
-cd ..\..
+cd "..\.."
 goto :eof
 
 :run_dev_server
 echo [2/4] Starting development server...
 
-cd HWnow-wails\HWnow-wails
+cd "HWnow-wails\HWnow-wails"
 
 :: Check if frontend dependencies are installed
 if not exist "frontend\node_modules" (
     echo [INFO] Installing frontend dependencies...
-    cd frontend
+    cd "frontend"
     npm install
     if errorlevel 1 (
         echo [ERROR] Failed to install frontend dependencies.
-        cd ..\..
+        cd "..\.."
         pause
         exit /b
     )
-    cd ..
+    cd ".."
 )
 
-:: Run development server with live reload using legacy WebView2 loader
-echo [INFO] Starting Wails development server with live reload and legacy WebView2 loader...
+:: Run development server with live reload
+:: CPU optimization: Remove legacy WebView2 loader
+echo [INFO] Starting Wails development server with live reload...
 echo.
 echo ===================================================================
 echo      HWnow Development Server
 echo      The application will open automatically
 echo      Changes will be automatically reloaded
-echo      Using legacy WebView2 loader for compatibility
+echo      Optimized for performance
 echo      Press Ctrl+C to stop
 echo ===================================================================
 
-wails dev -tags native_webview2loader
+wails dev
 if errorlevel 1 (
     echo [ERROR] Failed to start development server.
 )
 
-cd ..\..
+cd "..\.."
 goto :eof
 
 :run_wails_app
 echo [2/2] Running existing HWnow Wails application...
 
-if exist "HWnow-wails.exe" (
-    echo [INFO] Starting HWnow Wails application...
+:: CPU optimization: Executable priority specification
+:: Priority: build\bin\HWnow-wails.exe > HWnow-wails\HWnow-wails\build\bin\HWnow-wails.exe > HWnow-wails.exe
+if exist "HWnow-wails\HWnow-wails\build\bin\HWnow-wails.exe" (
+    echo [INFO] Starting HWnow Wails application from build directory...
+    echo [INFO] Executable: HWnow-wails\HWnow-wails\build\bin\HWnow-wails.exe
     echo.
     echo ===================================================================
-    echo      HWnow Wails Application
+    echo      HWnow Wails Application (Latest Build)
+    echo      Native desktop application with system tray support
+    echo      Press Alt+F4 or use File->Quit to exit
+    echo ===================================================================
+    
+    start "" "HWnow-wails\HWnow-wails\build\bin\HWnow-wails.exe"
+    echo [INFO] HWnow Wails application started successfully!
+) else if exist "HWnow-wails.exe" (
+    echo [INFO] Starting HWnow Wails application from root directory...
+    echo [INFO] Executable: HWnow-wails.exe
+    echo.
+    echo ===================================================================
+    echo      HWnow Wails Application (Root Copy)
     echo      Native desktop application with system tray support
     echo      Press Alt+F4 or use File->Quit to exit
     echo ===================================================================
@@ -278,10 +296,17 @@ if exist "HWnow-wails.exe" (
     start "" "HWnow-wails.exe"
     echo [INFO] HWnow Wails application started successfully!
 ) else (
-    echo [ERROR] HWnow-wails.exe not found. Please build the application first using mode 1 or 2.
+    echo [ERROR] HWnow-wails.exe not found in any expected location.
+    echo.
+    echo Expected locations:
+    echo   1. HWnow-wails\HWnow-wails\build\bin\HWnow-wails.exe (Latest build)
+    echo   2. HWnow-wails.exe (Root directory copy)
+    echo.
+    echo Please build the application first using mode 1 or 2.
     echo.
     echo Available executables:
-    if exist "HWnow.exe" echo   - HWnow.exe (Legacy version)
+    if exist "HWnow.exe" echo   - HWnow.exe (Legacy version - not recommended)
+    if exist "HWnow-wails\HWnow-wails\*.exe" echo   - Found other executables in build directory
     echo.
     pause
 )

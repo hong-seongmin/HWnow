@@ -131,11 +131,12 @@ const connect = () => {
       connectionTimeoutId = null;
     }
     
-    // 하트비트 시작
+    // CPU 최적화 Phase 3: 하트비트 완전 비활성화 (Wails에서는 불필요)
     if (heartbeatInterval) {
       clearInterval(heartbeatInterval);
+      heartbeatInterval = null;
     }
-    heartbeatInterval = setInterval(sendHeartbeat, 30000); // 30초마다 핑
+    // heartbeatInterval = setInterval(sendHeartbeat, 30000); // WebSocket 하트비트 비활성화
     
     // 대기중인 메시지 처리
     processMessageQueue();
@@ -320,14 +321,28 @@ const connect = () => {
 // 공개 API 함수들
 
 export const initWebSocket = () => {
+  // CPU 최적화 Phase 3: WebSocket 초기화 완전 비활성화
+  console.log('[WebSocket] initWebSocket disabled for CPU optimization - using Wails communication only');
+  
+  // 즉시 연결된 상태로 알림 (기존 코드 호환성 유지)
+  notifyConnectionStatus(true);
+  
+  return; // WebSocket 연결 시도하지 않음
+  
+  /* 기존 WebSocket 연결 로직 비활성화
   if (!socket || socket.readyState === WebSocket.CLOSED) {
     connect();
   }
+  */
 };
 
-// 연결 상태 확인
+// 연결 상태 확인 - CPU 최적화: 항상 true 반환 (Wails 통신 사용)
 export const isWebSocketConnected = (): boolean => {
+  return true; // WebSocket 대신 Wails 통신을 사용하므로 항상 연결된 것으로 처리
+  
+  /* 기존 WebSocket 연결 확인 로직 비활성화
   return isConnected && socket?.readyState === WebSocket.OPEN;
+  */
 };
 
 // 연결 상태 변경 콜백 등록

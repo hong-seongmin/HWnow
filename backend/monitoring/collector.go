@@ -164,7 +164,14 @@ var (
 // Start는 주기적으로 시스템 자원을 수집하여 채널로 전송하는 고루틴을 시작합니다.
 // wsChan: WebSocket으로 실시간 전송하기 위한 채널
 // dbChan: DB에 로그를 기록하기 위한 채널
+// CPU 최적화 Phase 5.1: 무한 루프 완전 비활성화
 func Start(wsChan chan<- *ResourceSnapshot, dbChan chan<- *ResourceSnapshot) {
+	// CPU 소모를 방지하기 위해 모니터링 무한 루프 비활성화
+	log.Println("CPU 최적화: 백그라운드 모니터링 시스템 완전 비활성화됨 (2초 ticker 제거)")
+	return
+	
+	// 비활성화된 원본 코드 (CPU 소모 방지)
+	/*
 	ticker := time.NewTicker(2 * time.Second) // 2초마다 데이터 수집
 	defer ticker.Stop()
 
@@ -372,6 +379,7 @@ func Start(wsChan chan<- *ResourceSnapshot, dbChan chan<- *ResourceSnapshot) {
 		wsChan <- snapshot
 		dbChan <- snapshot
 	}
+	*/
 }
 
 

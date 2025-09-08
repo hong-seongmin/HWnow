@@ -15,6 +15,10 @@ export function GetGPUInfo():Promise<monitoring.GPUInfo>;
 
 export function GetGPUProcesses():Promise<Array<monitoring.GPUProcess>>;
 
+export function GetGPUProcessesDelta(arg1:string):Promise<monitoring.GPUProcessDeltaResponse>;
+
+export function GetGPUProcessesFiltered(arg1:monitoring.GPUProcessQuery):Promise<monitoring.GPUProcessResponse>;
+
 export function GetPages(arg1:string):Promise<main.PageResult>;
 
 export function GetRealTimeMetrics():Promise<main.RealTimeMetrics>;
@@ -40,6 +44,8 @@ export function OnStartup(arg1:context.Context):Promise<void>;
 export function ResumeGPUProcess(arg1:number):Promise<main.GPUProcessControlResult>;
 
 export function SaveWidgets(arg1:string,arg2:string,arg3:Array<Record<string, any>>):Promise<main.WidgetResult>;
+
+export function SetGPUProcessMonitoring(arg1:boolean):Promise<void>;
 
 export function SetGPUProcessPriority(arg1:number,arg2:string):Promise<main.GPUProcessControlResult>;
 

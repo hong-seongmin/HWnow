@@ -7,6 +7,9 @@ export const GPU_PROCESS_WIDGET_DEFAULTS: Partial<WidgetConfig> = {
   gpuSortBy: 'gpu_usage',
   gpuSortOrder: 'desc',
   
+  // 레이아웃/사이즈 동작
+  gpuAutoSize: false, // CPU 최적화 기본: 자동 리사이즈 비활성화
+  
   // 필터링 설정
   gpuFilterEnabled: false,
   gpuUsageThreshold: 25,
@@ -15,14 +18,14 @@ export const GPU_PROCESS_WIDGET_DEFAULTS: Partial<WidgetConfig> = {
   
   // 실시간 업데이트 설정
   gpuShowUpdateIndicators: true,
-  gpuEnableUpdateAnimations: true,
+  gpuEnableUpdateAnimations: false,
   gpuUpdateInterval: 2000, // ms
   
   // 시각적 피드백 설정
   gpuShowStatusColors: true,
   gpuShowUsageGradients: true,
   gpuShowProcessIcons: true,
-  gpuShowStatusAnimations: true,
+  gpuShowStatusAnimations: false,
   
   // 프로세스 제어 설정
   gpuEnableProcessControl: true,

@@ -37,7 +37,14 @@ func NewHub() *Hub {
 }
 
 // Run은 Hub의 메인 루프를 실행하여 클라이언트 연결 및 메시지 전송을 처리합니다.
+// CPU 최적화 Phase 4.1: WebSocket Hub 완전 제거 - 무한 루프 비활성화
 func (h *Hub) Run(snapshotChan <-chan *monitoring.ResourceSnapshot) {
+	// CPU 소모를 방지하기 위해 무한 루프를 비활성화
+	log.Println("WebSocket Hub disabled for CPU optimization")
+	return
+	
+	// 비활성화된 원본 코드 (CPU 소모 방지)
+	/*
 	for {
 		select {
 		case client := <-h.register:
@@ -79,4 +86,5 @@ func (h *Hub) Run(snapshotChan <-chan *monitoring.ResourceSnapshot) {
 			}
 		}
 	}
+	*/
 }

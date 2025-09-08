@@ -22,6 +22,14 @@ export function GetGPUProcesses() {
   return window['go']['main']['App']['GetGPUProcesses']();
 }
 
+export function GetGPUProcessesDelta(arg1) {
+  return window['go']['main']['App']['GetGPUProcessesDelta'](arg1);
+}
+
+export function GetGPUProcessesFiltered(arg1) {
+  return window['go']['main']['App']['GetGPUProcessesFiltered'](arg1);
+}
+
 export function GetPages(arg1) {
   return window['go']['main']['App']['GetPages'](arg1);
 }
@@ -72,6 +80,10 @@ export function ResumeGPUProcess(arg1) {
 
 export function SaveWidgets(arg1, arg2, arg3) {
   return window['go']['main']['App']['SaveWidgets'](arg1, arg2, arg3);
+}
+
+export function SetGPUProcessMonitoring(arg1) {
+  return window['go']['main']['App']['SetGPUProcessMonitoring'](arg1);
 }
 
 export function SetGPUProcessPriority(arg1, arg2) {

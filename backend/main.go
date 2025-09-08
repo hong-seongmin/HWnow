@@ -151,12 +151,15 @@ func main() {
 	wsChan := make(chan *monitoring.ResourceSnapshot)
 	dbChan := make(chan *monitoring.ResourceSnapshot)
 
-	// 허브 및 모니터링 시작
-	go hub.Run(wsChan)
-	go monitoring.Start(wsChan, dbChan)
-
-	// DB로 데이터 전송
-	go db.BatchInsertResourceLogs(dbChan, database)
+	// CPU 최적화 Phase 5.1: 백그라운드 고루틴 완전 비활성화
+	// 허브 및 모니터링 시작 - 비활성화됨
+	// go hub.Run(wsChan)                           // CPU 소모 방지: WebSocket Hub 비활성화
+	// go monitoring.Start(wsChan, dbChan)          // CPU 소모 방지: 2초마다 모니터링 비활성화
+	
+	// DB로 데이터 전송 - 비활성화됨  
+	// go db.BatchInsertResourceLogs(dbChan, database)  // CPU 소모 방지: 배치 삽입 고루틴 비활성화
+	
+	log.Println("CPU 최적화: 모든 백그라운드 모니터링 프로세스 비활성화됨")
 
 	// --- HTTP Server Setup ---
 	r := mux.NewRouter()
