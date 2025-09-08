@@ -603,6 +603,15 @@
   margin-bottom: 0.25rem;
 }
 
+/* GPU 프로세스 위젯 - 텍스트 오버플로우 수정 */
+.widget-gpu-process .process-header > *,
+.widget-gpu-process .process-item > * {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* 클릭 가능한 헤더 스타일 */
 .widget-gpu-process .sortable-header {
   cursor: pointer;
@@ -654,6 +663,11 @@
   display: flex;
   align-items: center;
   gap: 0.25rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .widget-gpu-process .process-pid {
@@ -2003,4 +2017,43 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* GPU 프로세스 위젯 UI 개선 */
+.widget-gpu-process .process-list .process-item {
+  min-height: 3.5rem !important;
+  max-height: 3.5rem !important;
+  overflow: hidden;
+  padding: 0.75rem 0.5rem !important;
+  align-items: center;
+}
+
+.widget-gpu-process .process-list .process-item > div[role="cell"] {
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* 프로세스 이름 개선 */
+.widget-gpu-process .process-list .process-item > div[role="cell"]:first-child {
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+  padding-right: 0.5rem;
+}
+
+/* GPU/메모리 사용률 컬럼 고정 폭 */
+.widget-gpu-process .process-list .process-item > div[role="cell"]:nth-child(2),
+.widget-gpu-process .process-list .process-item > div[role="cell"]:nth-child(3) {
+  flex-shrink: 0;
+  min-width: 4rem;
+  max-width: 4rem;
+}
+
+/* 툴팁 텍스트 개선 */
+.widget-gpu-process .process-list .process-item [title] {
+  position: relative;
+}
+
+.widget-gpu-process .process-list .process-item [title]:hover {
+  z-index: 1000;
 }

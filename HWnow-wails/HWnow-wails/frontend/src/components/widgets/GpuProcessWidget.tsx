@@ -105,6 +105,38 @@ const getSafeGPUProcesses = (processes: unknown[]): GPUProcessData[] => {
     }));
 };
 
+// 프로세스 이름을 스마트하게 줄이는 함수
+const abbreviateProcessName = (name: string, maxLength: number = 25): string => {
+  if (!name || name.length <= maxLength) return name;
+  
+  // Windows 경로 패턴 감지
+  if (name.includes('\\') && (name.includes('Program Files') || name.includes('Users'))) {
+    const parts = name.split('\\');
+    const fileName = parts[parts.length - 1];
+    
+    // 파일명이 너무 긴 경우 확장자 유지하고 줄임
+    if (fileName.length > maxLength) {
+      const dotIndex = fileName.lastIndexOf('.');
+      if (dotIndex > 0) {
+        const nameWithoutExt = fileName.substring(0, dotIndex);
+        const extension = fileName.substring(dotIndex);
+        const maxNameLength = maxLength - extension.length - 3; // "..." 고려
+        return `${nameWithoutExt.substring(0, maxNameLength)}...${extension}`;
+      }
+    }
+    
+    // 경로 줄임: C:\Program Files\... → C:\...\filename.exe
+    if (parts.length > 3) {
+      return `C:\\...\\${fileName}`;
+    }
+    
+    return fileName;
+  }
+  
+  // 일반 텍스트 줄임
+  return `${name.substring(0, maxLength - 3)}...`;
+};
+
 interface WidgetProps {
   widgetId: string;
   onRemove: () => void;
@@ -485,17 +517,27 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
                 }}
               >
                 <div role="cell">
-                  <div style={{ 
-                    fontWeight: 500, 
-                    fontSize: '0.875rem',
-                    color: 'var(--color-text-primary)'
-                  }}>
-                    {process.name}
+                  <div 
+                    style={{ 
+                      fontWeight: 500, 
+                      fontSize: '0.875rem',
+                      color: 'var(--color-text-primary)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      cursor: process.name.length > 25 ? 'help' : 'default'
+                    }}
+                    title={process.name.length > 25 ? `Full path: ${process.name}\n\nCommand: ${process.command}\nType: ${process.type}` : undefined}
+                  >
+                    {abbreviateProcessName(process.name)}
                   </div>
                   <div style={{ 
                     fontSize: '0.75rem', 
                     color: 'var(--color-text-secondary)',
-                    marginTop: '0.125rem'
+                    marginTop: '0.125rem',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
                   }}>
                     PID: {process.pid} • {process.status}
                   </div>
