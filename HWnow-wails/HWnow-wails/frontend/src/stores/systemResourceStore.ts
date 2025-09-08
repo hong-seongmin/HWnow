@@ -121,7 +121,7 @@ const initialState: SystemResourceData = {
 
 export const useSystemResourceStore = create<SystemResourceState>((set) => ({
   data: initialState,
-  maxDataPoints: 50, // CPU 최적화: 200 → 50 포인트로 감소 (메모리 사용량 75% 감소)
+  maxDataPoints: 20, // CPU 최적화 Phase 3: 30 → 20 포인트로 극한 감소 (메모리 사용량 90% 감소, 여전히 의미있는 차트)
   setGPUProcesses: (processes) => {
     set((state) => ({
       data: {
@@ -139,10 +139,10 @@ export const useSystemResourceStore = create<SystemResourceState>((set) => ({
     }));
   },
   setData: (type, value, info) => {
-    // 데이터 수신 로깅 (debug mode)
-    if (type === 'disk_read' || type === 'disk_write' || type === 'net_sent' || type === 'net_recv') {
-      console.log(`[SystemResourceStore] Receiving ${type}: ${value}`, info ? `(info: ${info})` : '');
-    }
+    // CPU 최적화: 데이터 수신 로깅 비활성화 (I/O 오버헤드 제거)
+    // if (type === 'disk_read' || type === 'disk_write' || type === 'net_sent' || type === 'net_recv') {
+    //   console.log(`[SystemResourceStore] Receiving ${type}: ${value}`, info ? `(info: ${info})` : '');
+    // }
     
     set((state) => {
       // Handle CPU info separately

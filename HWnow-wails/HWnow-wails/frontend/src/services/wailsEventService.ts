@@ -93,21 +93,26 @@ export class WailsEventService {
   
   private getDefaultConfig(): EventServiceConfig {
     return {
-      pollingInterval: 10000, // CPU 최적화: 6초 → 10초 (백엔드 캐싱으로 더 긴 간격 가능)
-      batchProcessingDelay: 300,
-      maxRetries: 2, // Reduced retries
+      pollingInterval: 30000, // CPU 최적화 Phase 3: 20초 → 30초 (1.5배 추가 감소)
+      batchProcessingDelay: 1000,  // 배치 처리 지연 추가 증가 (CPU 부하 분산)
+      maxRetries: 1, // 재시도 횟수 최소화 
       adaptivePolling: true,
       priorityMetrics: ['cpu', 'ram', 'gpu', 'gpu_process'],
-      performanceThreshold: 2000, // 2 seconds (more lenient)
-      errorRateThreshold: 30, // 30% (more lenient)
-      backgroundPollingInterval: 15000, // 15 seconds when backgrounded
+      performanceThreshold: 5000, // CPU 최적화: 3초 → 5초 (더욱 관대한 임계값)
+      errorRateThreshold: 50, // CPU 최적화: 40% → 50% (더욱 관대한 오류율)
+      backgroundPollingInterval: 300000, // CPU 최적화 Phase 3: 1분 → 5분 (백그라운드에서 극한 감소)
       highFrequencyMetrics: ['cpu', 'ram', 'gpu_usage', 'gpu_processes'],
       lowFrequencyMetrics: ['system_info', 'disk_total', 'disk_free']
     };
   }
   
   private initializePerformanceTracking(): void {
-    // Reset performance metrics periodically
+    // CPU 최적화 Phase Final: 성능 메트릭 추적 완전 비활성화
+    // 주기적인 성능 메트릭 리셋 및 적응형 폴링 비활성화로 CPU 사용률 대폭 감소
+    // Performance tracking disabled for CPU optimization
+    
+    // 비활성화된 원본 코드 (CPU 소모 방지)
+    /*
     setInterval(() => {
       if (this.performanceMetrics.successCount + this.performanceMetrics.errorCount > 0) {
         const totalRequests = this.performanceMetrics.successCount + this.performanceMetrics.errorCount;
@@ -136,7 +141,8 @@ export class WailsEventService {
       // Reset counters but keep running average
       this.performanceMetrics.errorCount = 0;
       this.performanceMetrics.successCount = 0;
-    }, 300000); // Every 5 minutes (reduced CPU usage)
+    }, 900000);
+    */
   }
   
   private initializeVisibilityTracking(): void {
@@ -223,9 +229,13 @@ export class WailsEventService {
     // Clear existing interval
     this.clearPolling(jobName);
     
-    // Start with new interval
-    const intervalId = setInterval(pollingFunction, newInterval);
-    this.pollingIntervals.set(jobName, intervalId);
+    // CPU 최적화 Phase Final: 적응형 폴링 타이머 완전 비활성화
+    // 적응형 폴링으로 인한 CPU 소모 방지 - setInterval 타이머 제거
+    console.log(`[WailsEvents] Adaptive polling disabled for CPU optimization: ${jobName}`);
+    
+    // 비활성화된 원본 코드 (CPU 소모 방지)
+    // const intervalId = setInterval(pollingFunction, newInterval);
+    // this.pollingIntervals.set(jobName, intervalId);
     
     console.log(`[WailsEvents] Restarted ${jobName} with ${newInterval}ms interval`);
   }
@@ -272,14 +282,16 @@ export class WailsEventService {
       
       console.log('[WailsEvents] Monitoring started successfully');
       
-      // Start comprehensive polling for all metrics 
-      // Always start all monitoring services to ensure all data is available
-      console.log('[WailsEvents] Starting comprehensive monitoring for all metrics');
-      this.startSystemInfoPolling();
-      this.startRealTimeMetricsPolling(); 
-      this.startGPUInfoPolling();
-      this.startGPUProcessPolling();
-      this.startTopProcessPolling();
+      // CPU OPTIMIZATION: Only start essential GPU process polling
+      // All other polling services disabled to minimize CPU usage
+      console.log('[WailsEvents] Starting minimal monitoring - GPU processes only');
+      // Enable backend GPU process collection only when needed
+      try { await wailsApiService.setGPUProcessMonitoring(true); } catch {}
+      // this.startSystemInfoPolling();        // DISABLED for CPU optimization
+      // this.startRealTimeMetricsPolling();   // DISABLED for CPU optimization  
+      // this.startGPUInfoPolling();           // DISABLED for CPU optimization
+      this.startGPUProcessPolling();           // ONLY essential GPU process polling
+      // this.startTopProcessPolling();        // DISABLED for CPU optimization
       
     } catch (error) {
       console.error('[WailsEvents] Failed to start monitoring:', error);
@@ -307,6 +319,8 @@ export class WailsEventService {
       // Clear all polling intervals
       this.clearAllPolling();
       
+      // Disable backend GPU process collection when monitoring stops
+      try { await wailsApiService.setGPUProcessMonitoring(false); } catch {}
       console.log('[WailsEvents] Monitoring stopped successfully');
       
     } catch (error) {
@@ -348,7 +362,7 @@ export class WailsEventService {
   
   private startSystemInfoPolling(): void {
     const poller = this.createSystemInfoPoller();
-    this.startPollingJob('system_info', poller, 60000); // Every 60 seconds (reduced CPU usage)
+    this.startPollingJob('system_info', poller, 300000); // CPU 최적화 Phase 2: 60초 → 5분 (시스템 정보는 자주 변하지 않음)
   }
   
   private createSystemInfoPoller(): () => Promise<void> {
@@ -453,16 +467,16 @@ export class WailsEventService {
             setData('gpu_memory_used', metrics.gpu_info.MemoryUsed);
           }
         } else {
-          console.log('[WailsEvents] No GPU info in RealTime metrics');
+          // No GPU info in RealTime metrics
         }
         
         // GPU processes - only if available
         if (metrics.gpu_processes && Array.isArray(metrics.gpu_processes)) {
-          console.log('[WailsEvents] RealTime GPU processes received:', metrics.gpu_processes.length, 'processes');
+          // RealTime GPU processes received
           const { setGPUProcesses } = useSystemResourceStore.getState();
           setGPUProcesses(metrics.gpu_processes);
         } else {
-          console.log('[WailsEvents] No GPU processes in RealTime metrics');
+          // No GPU processes in RealTime metrics
         }
         
         // Top processes - only if available
@@ -497,12 +511,14 @@ export class WailsEventService {
       }
     };
     
-    // High frequency polling for real-time data
-    const intervalId = setInterval(pollRealTimeMetrics, this.config.pollingInterval);
-    this.pollingIntervals.set('realtime_metrics', intervalId);
+    // CPU 최적화 Phase Final: 실시간 메트릭 폴링 완전 비활성화
+    // 고빈도 폴링으로 인한 CPU 소모 방지 - setInterval 타이머 제거
+    console.log('[WailsEvents] Real-time metrics polling disabled for CPU optimization');
     
-    // Initial call
-    pollRealTimeMetrics();
+    // 비활성화된 원본 코드 (CPU 소모 방지)
+    // const intervalId = setInterval(pollRealTimeMetrics, this.config.pollingInterval);
+    // this.pollingIntervals.set('realtime_metrics', intervalId);
+    // pollRealTimeMetrics();
   }
   
   private startGPUInfoPolling(): void {
@@ -550,9 +566,13 @@ export class WailsEventService {
       }
     };
     
-    // GPU info polling - low frequency (캐싱으로 인해 더 낮은 빈도 가능)
-    const intervalId = setInterval(pollGPUInfo, this.config.pollingInterval * 6); // CPU 최적화: 15초 → 60초 (1분)
-    this.pollingIntervals.set('gpu_info', intervalId);
+    // CPU 최적화 Phase Final: GPU 정보 폴링 완전 비활성화
+    // GPU 정보 폴링으로 인한 CPU 소모 방지 - setInterval 타이머 제거
+    console.log('[WailsEvents] GPU info polling disabled for CPU optimization');
+    
+    // 비활성화된 원본 코드 (CPU 소모 방지)
+    // const intervalId = setInterval(pollGPUInfo, this.config.pollingInterval * 12);
+    // this.pollingIntervals.set('gpu_info', intervalId);
     
     // Initial call
     pollGPUInfo();
@@ -570,22 +590,10 @@ export class WailsEventService {
           'GetGPUProcesses'
         );
         
-        console.log('[WailsEvents] [DEDICATED] Raw GPU processes received from backend:', processes.length, 'processes', processes);
+        // GPU processes received
         
         // Convert to our batch format and process
         this.gpuProcessBatch = processes.map(process => {
-          console.log('[WailsEvents] [DEDICATED] Mapping process:', {
-            raw: process,
-            mapped: {
-              pid: process.pid,
-              name: process.name,
-              gpu_usage: process.gpu_usage,
-              gpu_memory: process.gpu_memory,
-              type: process.type || 'gpu',
-              command: process.command || process.name,
-              status: process.status || 'running'
-            }
-          });
           
           return {
             pid: process.pid,
@@ -598,7 +606,7 @@ export class WailsEventService {
           };
         });
         
-        console.log('[WailsEvents] [DEDICATED] Final GPU process batch to store:', this.gpuProcessBatch);
+        // GPU processes mapped to store
         
         // Process batch immediately
         this.processGPUProcessBatch();
@@ -611,12 +619,12 @@ export class WailsEventService {
       }
     };
     
-    // GPU process polling - low frequency with caching support  
-    const intervalId = setInterval(pollGPUProcesses, this.config.pollingInterval * 3); // CPU 최적화: 12초 → 30초 (캐싱으로 더 낮은 빈도 가능)
-    this.pollingIntervals.set('gpu_processes', intervalId);
+    // Phase 16.3.1: GPU 폴링 5분 간격으로 복구 (minimal CPU impact)
+    console.log('[WailsEvents] Starting minimal GPU process polling (5min interval)...');
     
-    // Initial call
-    pollGPUProcesses();
+    // 5분 간격으로 GPU 프로세스 폴링 활성화
+    // Initial call은 startPollingJob 내부에서 자동으로 실행됨
+    this.startPollingJob('gpu_processes', pollGPUProcesses, 300000); // 5분 간격 (300초)
   }
   
   private startTopProcessPolling(): void {
@@ -666,13 +674,14 @@ export class WailsEventService {
       }
     };
     
-    // Process polling - low frequency 
-    const intervalId = setInterval(pollTopProcesses, this.config.pollingInterval * 6); // CPU 최적화: 20초 → 60초 (1분)
-    this.pollingIntervals.set('top_processes', intervalId);
-    console.log('[WailsEvents] Top process polling interval set - every', this.config.pollingInterval * 6, 'ms');
+    // CPU 최적화 Phase Final: Top 프로세스 폴링 완전 비활성화
+    // Top 프로세스 폴링으로 인한 CPU 소모 방지 - setInterval 타이머 제거
+    console.log('[WailsEvents] Top process polling disabled for CPU optimization');
     
-    // Initial call
-    console.log('[WailsEvents] Making initial top process polling call...');
+    // 비활성화된 원본 코드 (CPU 소모 방지)
+    // const intervalId = setInterval(pollTopProcesses, this.config.pollingInterval * 15);
+    // this.pollingIntervals.set('top_processes', intervalId);
+    // pollTopProcesses();
     pollTopProcesses();
   }
   
@@ -688,9 +697,17 @@ export class WailsEventService {
       });
     };
     
-    // Start interval
-    const intervalId = setInterval(wrappedPoller, interval);
-    this.pollingIntervals.set(jobName, intervalId);
+    // Phase 16.3.1: GPU 프로세스 폴링만 선택적 복구 (최소 CPU 소모)
+    if (jobName === 'gpu_processes') {
+      // GPU 프로세스는 5분 간격으로 폴링 (300초)
+      const gpuInterval = Math.max(interval * 10, 300000); // 최소 5분
+      const intervalId = setInterval(wrappedPoller, gpuInterval);
+      this.pollingIntervals.set(jobName, intervalId);
+      console.log(`[WailsEvents] GPU polling restored with ${gpuInterval/1000}s interval`);
+    } else {
+      // 다른 모든 폴링은 여전히 비활성화 (CPU 최적화 유지)
+      console.log(`[WailsEvents] Polling job disabled for CPU optimization: ${jobName}`);
+    }
     
     // Initial call
     wrappedPoller();
@@ -748,7 +765,7 @@ export class WailsEventService {
   private processGPUProcessBatch(): void {
     const { setGPUProcesses } = useSystemResourceStore.getState();
     
-    console.log('[WailsEvents] [DEDICATED] Processing GPU process batch:', this.gpuProcessBatch.length, 'processes');
+    // Processing GPU batch
     
     if (this.gpuProcessBatch.length > 0) {
       // Convert our batch format to store format
@@ -762,10 +779,10 @@ export class WailsEventService {
         status: process.status
       }));
       
-      console.log('[WailsEvents] [DEDICATED] Setting GPU processes in store:', processesForStore);
+      // GPU processes updated in store
       setGPUProcesses(processesForStore);
     } else {
-      console.log('[WailsEvents] [DEDICATED] No GPU processes in batch - not updating store');
+      // No GPU processes in batch
     }
     
     // Clear batch
@@ -879,7 +896,12 @@ export class WailsEventService {
     }
     
     if (needsGPUProcesses) {
+      // Ensure backend collection is enabled when GPU widget is active
+      wailsApiService.setGPUProcessMonitoring(true).catch(() => {});
       this.startGPUProcessPolling();
+    } else {
+      // Disable backend collection if not needed
+      wailsApiService.setGPUProcessMonitoring(false).catch(() => {});
     }
     
     if (needsTopProcesses) {
@@ -913,11 +935,13 @@ export class WailsEventService {
       this.clearAllPolling();
       
       setTimeout(() => {
-        this.startSystemInfoPolling();
-        this.startRealTimeMetricsPolling();
-        this.startGPUInfoPolling();
-        this.startGPUProcessPolling();
-        this.startTopProcessPolling();
+        // CPU OPTIMIZATION: Only restart essential GPU process polling
+        console.log('[WailsEvents] Config updated - restarting minimal GPU polling only');
+        // this.startSystemInfoPolling();        // DISABLED for CPU optimization
+        // this.startRealTimeMetricsPolling();   // DISABLED for CPU optimization
+        // this.startGPUInfoPolling();           // DISABLED for CPU optimization
+        this.startGPUProcessPolling();           // ONLY essential GPU process polling
+        // this.startTopProcessPolling();        // DISABLED for CPU optimization
       }, 100);
     }
   }
