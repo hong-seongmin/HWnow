@@ -62,6 +62,7 @@ export namespace main {
 	}
 	export class RealTimeMetrics {
 	    cpu_usage: number;
+	    cpu_core_usage: number[];
 	    memory_usage: number;
 	    disk_usage?: monitoring.DiskUsageInfo;
 	    disk_read_speed: number;
@@ -88,6 +89,7 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.cpu_usage = source["cpu_usage"];
+	        this.cpu_core_usage = source["cpu_core_usage"];
 	        this.memory_usage = source["memory_usage"];
 	        this.disk_usage = this.convertValues(source["disk_usage"], monitoring.DiskUsageInfo);
 	        this.disk_read_speed = source["disk_read_speed"];
@@ -127,6 +129,7 @@ export namespace main {
 	export class SystemInfo {
 	    platform: string;
 	    cpu_cores: number;
+	    cpu_model: string;
 	    total_memory: number;
 	    // Go type: time
 	    boot_time: any;
@@ -139,6 +142,7 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.platform = source["platform"];
 	        this.cpu_cores = source["cpu_cores"];
+	        this.cpu_model = source["cpu_model"];
 	        this.total_memory = source["total_memory"];
 	        this.boot_time = this.convertValues(source["boot_time"], null);
 	    }

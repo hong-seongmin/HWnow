@@ -53,15 +53,17 @@ type Config struct {
 
 // SystemInfo represents system information for Wails binding
 type SystemInfo struct {
-	Platform     string  `json:"platform"`
-	CPUCores     int     `json:"cpu_cores"`
-	TotalMemory  float64 `json:"total_memory"`
+	Platform     string    `json:"platform"`
+	CPUCores     int       `json:"cpu_cores"`
+	CPUModel     string    `json:"cpu_model"`
+	TotalMemory  float64   `json:"total_memory"`
 	BootTime     time.Time `json:"boot_time"`
 }
 
 // RealTimeMetrics represents real-time system metrics
 type RealTimeMetrics struct {
 	CPUUsage       float64                      `json:"cpu_usage"`
+	CPUCoreUsage   []float64                    `json:"cpu_core_usage"`
 	MemoryUsage    float64                      `json:"memory_usage"`
 	DiskUsage      *monitoring.DiskUsageInfo    `json:"disk_usage"`
 	DiskReadSpeed  float64                      `json:"disk_read_speed"`
@@ -328,6 +330,13 @@ func (a *App) GetSystemInfo() (*SystemInfo, error) {
 		cpuCores = defaultCPUCores
 	}
 	
+	// CPU 모델명 조회 - 더 안전한 기본값 처리
+	cpuModel, err := monitoring.GetCPUModelName()
+	if err != nil {
+		monitoring.LogWarn("Failed to get CPU model name", "error", err)
+		cpuModel = "Unknown CPU"
+	}
+	
 	// 총 메모리 조회 - 더 안전한 기본값 처리
 	totalMemory, err := monitoring.GetTotalMemory()
 	if err != nil {
@@ -345,6 +354,7 @@ func (a *App) GetSystemInfo() (*SystemInfo, error) {
 	systemInfo := &SystemInfo{
 		Platform:     platform,
 		CPUCores:     cpuCores,
+		CPUModel:     cpuModel,
 		TotalMemory:  totalMemory,
 		BootTime:     bootTime,
 	}
@@ -352,6 +362,7 @@ func (a *App) GetSystemInfo() (*SystemInfo, error) {
 	monitoring.LogInfo("System info retrieved successfully", 
 		"platform", platform,
 		"cores", cpuCores,
+		"cpu_model", cpuModel,
 		"memory_mb", totalMemory)
 	
 	return systemInfo, nil
@@ -359,6 +370,7 @@ func (a *App) GetSystemInfo() (*SystemInfo, error) {
 
 // GetRealTimeMetrics returns current system metrics with improved error handling
 func (a *App) GetRealTimeMetrics() (*RealTimeMetrics, error) {
+	monitoring.LogInfo("[API CALL] GetRealTimeMetrics called from frontend")
 	timestamp := time.Now()
 	
 	// CPU 사용률 - 안전한 기본값 처리
@@ -366,6 +378,13 @@ func (a *App) GetRealTimeMetrics() (*RealTimeMetrics, error) {
 	if err != nil {
 		monitoring.LogWarn("Failed to get CPU usage", "error", err)
 		cpuUsage = 0.0
+	}
+	
+	// 개별 CPU 코어 사용률 - 안전한 기본값 처리
+	cpuCoreUsage, err := monitoring.GetCPUCoreUsage()
+	if err != nil {
+		monitoring.LogWarn("Failed to get CPU core usage", "error", err)
+		cpuCoreUsage = []float64{}
 	}
 	
 	// 메모리 사용률 - 안전한 기본값 처리
@@ -485,6 +504,7 @@ func (a *App) GetRealTimeMetrics() (*RealTimeMetrics, error) {
 	
 	metrics := &RealTimeMetrics{
 		CPUUsage:       cpuUsage,
+		CPUCoreUsage:   cpuCoreUsage,
 		MemoryUsage:    memUsage,
 		DiskUsage:      diskUsage,
 		DiskReadSpeed:  diskReadSpeed,

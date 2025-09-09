@@ -282,16 +282,16 @@ export class WailsEventService {
       
       console.log('[WailsEvents] Monitoring started successfully');
       
-      // CPU OPTIMIZATION: Only start essential GPU process polling
-      // All other polling services disabled to minimize CPU usage
-      console.log('[WailsEvents] Starting minimal monitoring - GPU processes only');
+      // SYSTEM RESTORATION: Re-enable essential polling services for widget functionality
+      // Balance between CPU optimization and functional monitoring
+      console.log('[WailsEvents] Starting balanced monitoring - essential services restored');
       // Enable backend GPU process collection only when needed
       try { await wailsApiService.setGPUProcessMonitoring(true); } catch {}
-      // this.startSystemInfoPolling();        // DISABLED for CPU optimization
-      // this.startRealTimeMetricsPolling();   // DISABLED for CPU optimization  
-      // this.startGPUInfoPolling();           // DISABLED for CPU optimization
-      this.startGPUProcessPolling();           // ONLY essential GPU process polling
-      // this.startTopProcessPolling();        // DISABLED for CPU optimization
+      this.startSystemInfoPolling();          // System info polling (5min intervals)
+      this.startRealTimeMetricsPolling();     // CPU/Memory/Disk/Network (15sec intervals)
+      this.startGPUInfoPolling();             // GPU hardware info (10min intervals)
+      this.startGPUProcessPolling();          // GPU processes (5min intervals - existing)
+      // this.startTopProcessPolling();       // Process monitoring (still disabled - optional feature)
       
     } catch (error) {
       console.error('[WailsEvents] Failed to start monitoring:', error);
@@ -362,7 +362,7 @@ export class WailsEventService {
   
   private startSystemInfoPolling(): void {
     const poller = this.createSystemInfoPoller();
-    this.startPollingJob('system_info', poller, 300000); // CPU 최적화 Phase 2: 60초 → 5분 (시스템 정보는 자주 변하지 않음)
+    this.startPollingJob('system_info', poller, 60000); // Reduced from 5 minutes to 1 minute for better UX
   }
   
   private createSystemInfoPoller(): () => Promise<void> {
@@ -377,7 +377,7 @@ export class WailsEventService {
         
         // Update store with system info (one-time data, no need for frequent updates)
         const { setData } = useSystemResourceStore.getState();
-        setData('cpu_info', systemInfo.cpu_cores, `${systemInfo.platform} - ${systemInfo.total_memory}MB`);
+        setData('cpu_info', systemInfo.cpu_cores, systemInfo.cpu_model);
         
       } catch (error) {
         this.handlePollingError('system_info', error);
@@ -403,6 +403,13 @@ export class WailsEventService {
         // Update basic metrics
         setData('cpu', metrics.cpu_usage);
         setData('ram', metrics.memory_usage);
+        
+        // Update CPU core usage data
+        if (metrics.cpu_core_usage && Array.isArray(metrics.cpu_core_usage)) {
+          metrics.cpu_core_usage.forEach((coreUsage, index) => {
+            setData(`cpu_core_${index + 1}`, coreUsage);
+          });
+        }
         
         // Update disk metrics
         if (metrics.disk_usage) {
@@ -511,14 +518,17 @@ export class WailsEventService {
       }
     };
     
-    // CPU 최적화 Phase Final: 실시간 메트릭 폴링 완전 비활성화
-    // 고빈도 폴링으로 인한 CPU 소모 방지 - setInterval 타이머 제거
-    console.log('[WailsEvents] Real-time metrics polling disabled for CPU optimization');
+    // SYSTEM RESTORATION: Re-enable real-time metrics polling for essential widgets
+    // High-frequency polling for real-time widget updates - 3 second intervals
+    console.log('[WailsEvents] Real-time metrics polling restored - 3 second intervals for widgets');
     
-    // 비활성화된 원본 코드 (CPU 소모 방지)
-    // const intervalId = setInterval(pollRealTimeMetrics, this.config.pollingInterval);
-    // this.pollingIntervals.set('realtime_metrics', intervalId);
-    // pollRealTimeMetrics();
+    // Use 3-second intervals for real-time data updates
+    const realTimeInterval = 3000; // 3 seconds for real-time updates
+    const intervalId = setInterval(pollRealTimeMetrics, realTimeInterval);
+    this.pollingIntervals.set('realtime_metrics', intervalId);
+    
+    // Initial call for immediate data
+    pollRealTimeMetrics();
   }
   
   private startGPUInfoPolling(): void {
@@ -566,15 +576,16 @@ export class WailsEventService {
       }
     };
     
-    // CPU 최적화 Phase Final: GPU 정보 폴링 완전 비활성화
-    // GPU 정보 폴링으로 인한 CPU 소모 방지 - setInterval 타이머 제거
-    console.log('[WailsEvents] GPU info polling disabled for CPU optimization');
+    // SYSTEM RESTORATION: Re-enable GPU info polling with 10-minute intervals
+    // GPU hardware info changes infrequently - 10 minute intervals are sufficient
+    console.log('[WailsEvents] GPU info polling restored - 10 minute intervals');
     
-    // 비활성화된 원본 코드 (CPU 소모 방지)
-    // const intervalId = setInterval(pollGPUInfo, this.config.pollingInterval * 12);
-    // this.pollingIntervals.set('gpu_info', intervalId);
+    // Use 10-minute intervals (600 seconds) for GPU hardware info
+    const gpuInfoInterval = 600000; // 10 minutes
+    const intervalId = setInterval(pollGPUInfo, gpuInfoInterval);
+    this.pollingIntervals.set('gpu_info', intervalId);
     
-    // Initial call
+    // Initial call for immediate data
     pollGPUInfo();
   }
   
@@ -697,17 +708,36 @@ export class WailsEventService {
       });
     };
     
-    // Phase 16.3.1: GPU 프로세스 폴링만 선택적 복구 (최소 CPU 소모)
-    if (jobName === 'gpu_processes') {
-      // GPU 프로세스는 5분 간격으로 폴링 (300초)
-      const gpuInterval = Math.max(interval * 10, 300000); // 최소 5분
-      const intervalId = setInterval(wrappedPoller, gpuInterval);
-      this.pollingIntervals.set(jobName, intervalId);
-      console.log(`[WailsEvents] GPU polling restored with ${gpuInterval/1000}s interval`);
-    } else {
-      // 다른 모든 폴링은 여전히 비활성화 (CPU 최적화 유지)
-      console.log(`[WailsEvents] Polling job disabled for CPU optimization: ${jobName}`);
+    // SYSTEM RESTORATION: Allow essential polling jobs with optimized intervals
+    // Balance CPU optimization with widget functionality
+    let finalInterval = interval;
+    
+    // Adjust intervals based on job type for optimal performance
+    switch (jobName) {
+      case 'gpu_processes':
+        // GPU processes: 5 minute intervals (existing behavior)
+        finalInterval = Math.max(interval * 10, 300000);
+        break;
+      case 'system_info':
+        // System info: Use provided interval (now 1 minute for better UX)
+        finalInterval = interval;
+        break;
+      case 'gpu_info':
+        // GPU hardware info: 10 minute intervals (changes rarely)
+        finalInterval = Math.max(interval, 600000);
+        break;
+      case 'realtime_metrics':
+        // Real-time metrics: 3 second intervals (essential for widgets)
+        finalInterval = Math.max(interval, 3000);
+        break;
+      default:
+        // Other jobs: use provided interval
+        finalInterval = interval;
     }
+    
+    const intervalId = setInterval(wrappedPoller, finalInterval);
+    this.pollingIntervals.set(jobName, intervalId);
+    console.log(`[WailsEvents] Polling job '${jobName}' restored with ${finalInterval/1000}s interval`);
     
     // Initial call
     wrappedPoller();

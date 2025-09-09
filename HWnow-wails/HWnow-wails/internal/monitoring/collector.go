@@ -1,6 +1,7 @@
 package monitoring
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -1557,7 +1558,7 @@ func getCpuUsage() (float64, error) {
 	return percentages[0], nil
 }
 
-func getCpuCoreUsage() ([]float64, error) {
+func GetCPUCoreUsage() ([]float64, error) {
 	// CPU 최적화 Phase 3: 코어별 측정 시간 단축 및 캐시 적용
 	percentages, err := cpu.Percent(200*time.Millisecond, true) // CPU 최적화: 1초 → 200ms (5배 빨라짐)
 	if err != nil {
@@ -4870,14 +4871,57 @@ func SetGPUProcessPriority(pid int32, priority string) error {
 
 // GetCPUCores returns the number of CPU cores
 func GetCPUCores() (int, error) {
-	cpuInfo, err := cpu.Info()
+	// Try to get CPU info with a timeout context
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	
+	cpuInfo, err := cpu.InfoWithContext(ctx)
 	if err != nil {
-		return 0, err
+		// Fallback to runtime.NumCPU() if gopsutil fails
+		LogWarn("Failed to get CPU info from gopsutil, using runtime fallback", "error", err)
+		return runtime.NumCPU(), nil
 	}
+	
 	if len(cpuInfo) == 0 {
-		return 0, fmt.Errorf("unable to determine CPU core count")
+		// Fallback to runtime.NumCPU() if no CPU info available
+		LogWarn("No CPU info available from gopsutil, using runtime fallback")
+		return runtime.NumCPU(), nil
 	}
-	return int(cpuInfo[0].Cores), nil
+	
+	// Verify the core count is reasonable
+	cores := int(cpuInfo[0].Cores)
+	if cores <= 0 {
+		LogWarn("Invalid CPU core count from gopsutil, using runtime fallback", "reported_cores", cores)
+		return runtime.NumCPU(), nil
+	}
+	
+	return cores, nil
+}
+
+// GetCPUModelName returns the CPU model name
+func GetCPUModelName() (string, error) {
+	// Try to get CPU info with a timeout context
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	
+	cpuInfo, err := cpu.InfoWithContext(ctx)
+	if err != nil {
+		LogWarn("Failed to get CPU model name from gopsutil", "error", err)
+		return "Unknown CPU", nil
+	}
+	
+	if len(cpuInfo) == 0 {
+		LogWarn("No CPU model info available from gopsutil")
+		return "Unknown CPU", nil
+	}
+	
+	modelName := strings.TrimSpace(cpuInfo[0].ModelName)
+	if modelName == "" {
+		LogWarn("Empty CPU model name from gopsutil")
+		return "Unknown CPU", nil
+	}
+	
+	return modelName, nil
 }
 
 // GetTotalMemory returns total system memory in MB
