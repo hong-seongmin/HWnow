@@ -408,6 +408,33 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
         tabIndex={-1}
       >
         <div className="widget-header">
+          <div className="widget-actions left">
+            <button 
+              className="widget-action-button" 
+              title="GPU process monitor widget settings"
+              aria-label="Open GPU process monitor widget settings"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={handleSettingsClick}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M12 1v6m0 6v6m3.22-10.22l4.24-4.24m-4.24 10.46l4.24 4.24M21 12h-6m-6 0H3m10.22 3.22l-4.24 4.24m4.24-10.46L8.98 4.76" />
+              </svg>
+            </button>
+            {!isExpanded && onExpand && (
+              <button
+                className="widget-action-button expand-button"
+                onClick={onExpand}
+                title="Expand GPU process widget"
+                aria-label="Expand GPU process widget"
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>
+                </svg>
+              </button>
+            )}
+          </div>
           <div className="widget-title">
             <div className="widget-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -417,13 +444,14 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
             <span>GPU Processes</span>
           </div>
           <div className="widget-actions">
-            <button 
-              className="widget-action-button" 
-              onClick={handleSettingsClick}
-              title="GPU process monitor widget settings"
-              aria-label="Open GPU process monitor widget settings"
+            <button
+              className="remove-widget-button"
+              onClick={onRemove}
+              title="Remove GPU process widget"
+              aria-label="Remove GPU process widget"
+              onMouseDown={(e) => e.stopPropagation()}
             >
-              ⚙️
+              ×
             </button>
           </div>
         </div>
@@ -490,9 +518,27 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
               className="widget-action-button" 
               title="GPU process monitor widget settings"
               aria-label="Open GPU process monitor widget settings"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={handleSettingsClick}
             >
-              ⚙️
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M12 1v6m0 6v6m3.22-10.22l4.24-4.24m-4.24 10.46l4.24 4.24M21 12h-6m-6 0H3m10.22 3.22l-4.24 4.24m4.24-10.46L8.98 4.76" />
+              </svg>
             </button>
+            {!isExpanded && onExpand && (
+              <button
+                className="widget-action-button expand-button"
+                onClick={onExpand}
+                title="Expand GPU process widget"
+                aria-label="Expand GPU process widget"
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>
+                </svg>
+              </button>
+            )}
           </div>
           
           <div className="widget-title">
@@ -511,14 +557,15 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
             </span>
           </div>
           
-          <div className="widget-actions right">
-            <button 
-              className="widget-action-button" 
-              onClick={handleSettingsClick}
-              title="Widget settings"
-              aria-label="Open widget settings"
+          <div className="widget-actions">
+            <button
+              className="remove-widget-button"
+              onClick={onRemove}
+              title="Remove GPU process widget"
+              aria-label="Remove GPU process widget"
+              onMouseDown={(e) => e.stopPropagation()}
             >
-              ⚙️
+              ×
             </button>
           </div>
         </div>
