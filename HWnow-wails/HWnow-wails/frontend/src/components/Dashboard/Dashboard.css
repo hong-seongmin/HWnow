@@ -175,10 +175,10 @@
   }
 }
 
-/* 반응형 디자인 */
-@media (max-width: 768px) {
+/* 반응형 디자인 - 모바일 최적화 */
+@media (max-width: 767px) {
   .layout {
-    padding: var(--spacing-sm);
+    padding: var(--spacing-xs);
   }
   
   .widget-wrapper {
@@ -187,5 +187,26 @@
   
   .remove-widget-button {
     opacity: 1; /* 모바일에서는 항상 표시 */
+  }
+}
+
+/* 태블릿 최적화 */
+@media (min-width: 768px) and (max-width: 1199px) {
+  .layout {
+    padding: var(--spacing-sm);
+  }
+}
+
+/* 데스크톱 최적화 */
+@media (min-width: 1200px) {
+  .layout {
+    padding: var(--spacing-md);
+  }
+}
+
+/* 초대형 모니터 최적화 */
+@media (min-width: 1600px) {
+  .layout {
+    padding: var(--spacing-lg);
   }
 } 

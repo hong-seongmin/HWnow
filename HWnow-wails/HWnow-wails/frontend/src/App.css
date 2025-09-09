@@ -18,8 +18,21 @@ main {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--spacing-lg);
+  padding: var(--spacing-sm);
   background-color: var(--color-background);
+}
+
+/* 반응형 main 패딩 */
+@media (min-width: 768px) {
+  main {
+    padding: var(--spacing-md);
+  }
+}
+
+@media (min-width: 1200px) {
+  main {
+    padding: var(--spacing-lg);
+  }
 }
 
 /* Shortcuts Modal */
@@ -123,9 +136,9 @@ main {
 }
 
 #root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
+  width: 100%;
+  margin: 0;
+  padding: 0;
   text-align: center;
 }
 
