@@ -8,6 +8,63 @@
   </head>
   <body>
     <div id="root"></div>
+    
+    <!-- Error Detection Script -->
+    <script>
+      console.log('🔍 [DEBUG] Starting error detection...');
+      
+      // Global error handler
+      window.addEventListener('error', (event) => {
+        console.error('❌ [GLOBAL ERROR]', {
+          message: event.message,
+          filename: event.filename,
+          lineno: event.lineno,
+          colno: event.colno,
+          error: event.error
+        });
+        
+        // Show error on page
+        const errorDiv = document.createElement('div');
+        errorDiv.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; background: red; color: white; padding: 10px; z-index: 9999; font-family: monospace;';
+        errorDiv.innerHTML = `❌ ERROR: ${event.message} (${event.filename}:${event.lineno})`;
+        document.body.appendChild(errorDiv);
+      });
+      
+      // Unhandled promise rejection handler
+      window.addEventListener('unhandledrejection', (event) => {
+        console.error('❌ [PROMISE REJECTION]', event.reason);
+        
+        const errorDiv = document.createElement('div');
+        errorDiv.style.cssText = 'position: fixed; top: 40px; left: 0; width: 100%; background: orange; color: white; padding: 10px; z-index: 9999; font-family: monospace;';
+        errorDiv.innerHTML = `❌ PROMISE REJECTION: ${event.reason}`;
+        document.body.appendChild(errorDiv);
+      });
+      
+      // Check if root exists
+      setTimeout(() => {
+        const root = document.getElementById('root');
+        if (!root) {
+          console.error('❌ [DEBUG] Root element missing!');
+        } else if (root.children.length === 0) {
+          console.warn('⚠️ [DEBUG] Root element is empty after 3 seconds');
+          
+          const warningDiv = document.createElement('div');
+          warningDiv.style.cssText = 'padding: 50px; background: yellow; color: black; font-family: Arial; font-size: 18px;';
+          warningDiv.innerHTML = `
+            <h2>⚠️ DEBUG: React App Not Loaded</h2>
+            <p>The root element exists but React hasn't rendered anything.</p>
+            <p>Check the browser console (F12) for JavaScript errors.</p>
+            <p>Current time: ${new Date().toLocaleString()}</p>
+          `;
+          root.appendChild(warningDiv);
+        } else {
+          console.log('✅ [DEBUG] React app loaded successfully!');
+        }
+      }, 3000);
+      
+      console.log('✅ [DEBUG] Error detection initialized');
+    </script>
+    
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
