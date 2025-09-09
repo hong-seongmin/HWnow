@@ -12,8 +12,19 @@ interface WailsMiddlewareConfig {
   storeName: string;
 }
 
-// Store state interface for Wails integration
-interface WailsStoreState {
+// Store state interface for Wails integration - using runtime object
+export const WailsStoreState = {
+  // This is a runtime object that can be imported
+  // Used for type checking in TypeScript
+  _metadata: {
+    isWailsEnvironment: false,
+    isOnline: true,
+    lastSyncTime: 0
+  }
+};
+
+// Type definition for stores
+export type WailsStoreStateType = {
   _wailsMetadata?: {
     isWailsEnvironment: boolean;
     isOnline: boolean;
@@ -43,7 +54,7 @@ const detectOnlineStatus = (): boolean => {
 };
 
 // Main middleware function
-export const wailsMiddleware = <T extends WailsStoreState>(
+export const wailsMiddleware = <T extends WailsStoreStateType>(
   f: StateCreator<T, [], [], T>,
   config: WailsMiddlewareConfig
 ): StateCreator<T, [], WailsMiddleware, T> => {
@@ -113,7 +124,7 @@ export const createWailsMiddleware = (config: Partial<WailsMiddlewareConfig> = {
     ...config
   };
   
-  return <T extends WailsStoreState>(f: StateCreator<T, [], [], T>) => 
+  return <T extends WailsStoreStateType>(f: StateCreator<T, [], [], T>) => 
     wailsMiddleware(f, defaultConfig);
 };
 

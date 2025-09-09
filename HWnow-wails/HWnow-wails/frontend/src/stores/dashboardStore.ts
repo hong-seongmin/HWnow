@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Layout } from 'react-grid-layout';
 import type { Widget, WidgetType, Page, DashboardState, WidgetState } from './types';
 import { getWidgets, saveWidgets, deleteWidget, getPages, createPage, deletePage, updatePageName } from '../services/wailsApiService';
-import { wailsMiddleware, createWailsOperation, WailsStoreState } from './wailsStoreMiddleware';
+import { wailsMiddleware, WailsStoreState } from './wailsStoreMiddleware';
 
 // Debounce 유틸리티 함수
 function debounce<T extends (...args: any[]) => void>(func: T, delay: number) {
