@@ -7,6 +7,7 @@ import { PageTabs } from './components/common/PageTabs'
 import ToastContainer from './components/common/ToastContainer'
 import Onboarding from './components/common/Onboarding'
 import SupportLinks from './components/common/SupportLinks'
+import ErrorBoundary from './components/common/ErrorBoundary'
 import { ToastProvider, useToast } from './contexts/ToastContext'
 import { useAppShortcuts } from './hooks/useAppShortcuts'
 import { initWebSocket } from './services/wailsEventService'
@@ -31,8 +32,9 @@ function AppContent() {
   })
 
   useEffect(() => {
-    console.log('[App] Starting initWebSocket...');
-    initWebSocket()
+    initWebSocket().catch((error) => {
+      console.error('[App] Failed to initialize monitoring service:', error);
+    });
     
     // Check if onboarding has been completed
     const onboardingCompleted = localStorage.getItem('onboardingCompleted')
@@ -63,11 +65,15 @@ function AppContent() {
 
 function App() {
   return (
-    <Router>
-      <ToastProvider>
-        <AppContent />
-      </ToastProvider>
-    </Router>
+    <ErrorBoundary>
+      <div style={{ minHeight: '100vh', backgroundColor: '#f5f5f5' }}>
+        <Router>
+          <ToastProvider>
+            <AppContent />
+          </ToastProvider>
+        </Router>
+      </div>
+    </ErrorBoundary>
   )
 }
 
