@@ -45,7 +45,7 @@ export interface WidgetConfig {
   
   // GPU 프로세스 모니터링 (기본 설정)
   gpuProcessCount?: number;
-  gpuSortBy?: 'gpu_usage' | 'gpu_memory' | 'name' | 'pid' | 'type' | 'status';
+  gpuSortBy?: 'gpu_usage_percent' | 'gpu_memory_mb' | 'name' | 'pid' | 'type' | 'status';
   gpuSortOrder?: 'asc' | 'desc';
   
   // GPU 프로세스 필터링
@@ -76,6 +76,8 @@ export interface WidgetConfig {
   gpuShowProcessCommand?: boolean;
   gpuShowLastUpdateTime?: boolean;
   gpuCompactView?: boolean;
+  gpuShowTerminateButton?: boolean;
+  gpuRefreshInterval?: number;
   
   // 배터리 위젯
   showBatteryTime?: boolean;
