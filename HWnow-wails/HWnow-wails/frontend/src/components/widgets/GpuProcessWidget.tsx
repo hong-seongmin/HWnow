@@ -2,12 +2,13 @@ import React, { memo, useState, useRef, useEffect, useMemo, useCallback } from '
 import { useSystemResourceStore } from '../../stores/systemResourceStore';
 import { useDashboardStore } from '../../stores/dashboardStore';
 import { SettingsModal } from '../common/SettingsModal';
+import { GpuProcessSettings } from './settings/GpuProcessSettings';
 import { useConfirmDialog } from '../common/ConfirmDialog';
 import { useToast } from '../../contexts/ToastContext';
 import { ButtonSpinner, InlineLoader } from '../common/LoadingSpinner';
 import { killGPUProcess, suspendGPUProcess, resumeGPUProcess, setGPUProcessPriority } from '../../services/wailsApiService';
 import { onConnectionStatusChange, getWebSocketStatus, flushGPUProcessBatch } from '../../services/wailsEventService';
-import { getGPUProcessConfigWithDefaults, GPU_PROCESS_PRESETS, type GPUProcessPresetType } from '../../utils/gpuProcessWidgetDefaults';
+import { GPU_PROCESS_PRESETS, type GPUProcessPresetType } from '../../utils/gpuProcessWidgetDefaults';
 import { performanceMonitor, type PerformanceMetrics } from '../../utils/performanceMonitor';
 import './widget.css';
 
@@ -151,6 +152,8 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
   const [selectedProcesses, setSelectedProcesses] = useState<Set<number>>(new Set());
   const [isTerminating, setIsTerminating] = useState<Set<number>>(new Set());
   
+  const { showToast } = useToast();
+  
   const widgetRef = useRef<HTMLDivElement>(null);
   
   const rawGpuProcesses = useSystemResourceStore((state) => state.data.gpu_processes);
@@ -161,15 +164,28 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
     return page?.widgets.find((w) => w.i === widgetId);
   });
   
-  const config = getGPUProcessConfigWithDefaults(widget?.data || {});
+  // GPU Process Widget 기본 설정
+  const defaultConfig = {
+    gpuProcessCount: 10,
+    gpuSortBy: 'gpu_usage_percent',
+    gpuSortOrder: 'desc',
+    gpuFilterEnabled: false,
+    gpuUsageThreshold: 0,
+    gpuMemoryThreshold: 0,
+    gpuFilterType: 'or',
+    gpuShowTerminateButton: true,
+    gpuRefreshInterval: 3,
+  };
+
+  const config = { ...defaultConfig, ...widget?.config };
   
-  const processCount = config.gpuProcessCount || 5;
-  const sortBy = config.gpuSortBy || 'gpu_usage';
-  const sortOrder = config.gpuSortOrder || 'desc';
-  const filterEnabled = config.gpuFilterEnabled || false;
-  const usageThreshold = config.gpuUsageThreshold || 25;
-  const memoryThreshold = config.gpuMemoryThreshold || 100;
-  const filterType = config.gpuFilterType || 'or';
+  const processCount = config.gpuProcessCount;
+  const sortBy = config.gpuSortBy;
+  const sortOrder = config.gpuSortOrder;
+  const filterEnabled = config.gpuFilterEnabled;
+  const usageThreshold = config.gpuUsageThreshold;
+  const memoryThreshold = config.gpuMemoryThreshold;
+  const filterType = config.gpuFilterType;
   
   // GPU 프로세스 필터링 - useMemo 최적화
   const filteredProcesses = useMemo((): GPUProcessData[] => {
@@ -186,7 +202,7 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
         return meetsUsageThreshold || meetsMemoryThreshold;
       }
     });
-  }, [gpuProcesses, filterEnabled, usageThreshold, memoryThreshold, filterType]);
+  }, [gpuProcesses, filterEnabled, usageThreshold, memoryThreshold, filterType, widget?.config]);
   
   // GPU 프로세스 정렬 및 제한 - useMemo 최적화
   const sortedProcesses = useMemo((): GPUProcessData[] => {
@@ -196,10 +212,10 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
       let comparison = 0;
       
       switch (sortBy) {
-        case 'gpu_usage':
+        case 'gpu_usage_percent':
           comparison = a.gpu_usage - b.gpu_usage;
           break;
-        case 'gpu_memory':
+        case 'gpu_memory_mb':
           comparison = a.gpu_memory - b.gpu_memory;
           break;
         case 'name':
@@ -216,7 +232,7 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
     });
     
     return sorted.slice(0, Math.min(processCount, 100));
-  }, [filteredProcesses, sortBy, sortOrder, processCount]);
+  }, [filteredProcesses, sortBy, sortOrder, processCount, widget?.config]);
   
   // CPU 최적화: 프로세스 상태별 카운트를 useMemo로 캐싱하여 매 렌더링마다 filter 재실행 방지
   const processStatusCounts = useMemo(() => {
@@ -253,14 +269,31 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
   
   const handleSettingsClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
+    console.log('[GPUProcessWidget] Settings button clicked', { widgetId, widget });
+    
+    if (!widget) {
+      console.error('[GPUProcessWidget] Cannot open settings: widget is undefined', { widgetId });
+      showToast('위젯 설정을 열 수 없습니다. 페이지를 새로고침해주세요.', 'error');
+      return;
+    }
+    
     setIsSettingsOpen(true);
-  }, []);
+    console.log('[GPUProcessWidget] Settings modal opened successfully');
+  }, [widget, widgetId, showToast]);
   
   const handleSettingsSave = useCallback(() => {
+    if (!widget) {
+      console.error('[GPUProcessWidget] Cannot save settings: widget is undefined', { widgetId });
+      showToast('설정을 저장할 수 없습니다. 페이지를 새로고침해주세요.', 'error');
+      return;
+    }
+    
+    console.log('[GPUProcessWidget] Settings saved successfully', { widgetId, config: widget.config });
+    
     setIsSettingsOpen(false);
-  }, []);
+    showToast('GPU 프로세스 위젯 설정이 저장되었습니다.', 'success');
+  }, [widget, widgetId, showToast]);
   
-  const { showToast } = useToast();
   const { confirmDialog } = useConfirmDialog();
   
   // 정렬 헤더 클릭 핸들러
@@ -910,66 +943,14 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
         </div>
       </div>
       
-      {isSettingsOpen && (
+      {widget && isSettingsOpen && (
         <SettingsModal
+          isOpen={isSettingsOpen}
           title="GPU Process Widget Settings"
           onSave={handleSettingsSave}
-          onCancel={() => setIsSettingsOpen(false)}
+          onClose={() => setIsSettingsOpen(false)}
         >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
-            <div>
-              <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)' }}>
-                Process Count: {processCount}
-              </label>
-              <input
-                type="range"
-                min="1"
-                max="20"
-                value={processCount}
-                onChange={(e) => {
-                  const { actions } = useDashboardStore.getState();
-                  actions.updateWidgetConfig(widgetId, { gpuProcessCount: parseInt(e.target.value) });
-                }}
-                style={{ width: '100%' }}
-              />
-            </div>
-            
-            <div>
-              <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)' }}>
-                Sort By:
-              </label>
-              <select
-                value={sortBy}
-                onChange={(e) => {
-                  const { actions } = useDashboardStore.getState();
-                  actions.updateWidgetConfig(widgetId, { gpuSortBy: e.target.value as any });
-                }}
-                style={{ width: '100%', padding: 'var(--spacing-xs)' }}
-              >
-                <option value="gpu_usage">GPU Usage</option>
-                <option value="gpu_memory">GPU Memory</option>
-                <option value="name">Name</option>
-                <option value="pid">PID</option>
-              </select>
-            </div>
-            
-            <div>
-              <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)' }}>
-                Sort Order:
-              </label>
-              <select
-                value={sortOrder}
-                onChange={(e) => {
-                  const { actions } = useDashboardStore.getState();
-                  actions.updateWidgetConfig(widgetId, { gpuSortOrder: e.target.value as any });
-                }}
-                style={{ width: '100%', padding: 'var(--spacing-xs)' }}
-              >
-                <option value="desc">Descending</option>
-                <option value="asc">Ascending</option>
-              </select>
-            </div>
-          </div>
+          <GpuProcessSettings widget={widget} />
         </SettingsModal>
       )}
     </>
