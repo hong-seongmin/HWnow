@@ -90,13 +90,33 @@ goto :eof
 :kill_existing_processes
 echo [2/3] Stopping existing processes...
 
-:: Kill existing HWnow processes
+:: Kill all HWnow related processes (production and development versions)
+set "PROCESS_KILLED=0"
+
 taskkill /IM "HWnow-wails.exe" /F >NUL 2>&1
 if "%ERRORLEVEL%"=="0" (
-    echo [INFO] Existing HWnow process terminated.
-    ping 127.0.0.1 -n 2 >NUL 2>&1
+    echo [INFO] Existing HWnow production process terminated.
+    set "PROCESS_KILLED=1"
+)
+
+taskkill /IM "HWnow-wails-dev.exe" /F >NUL 2>&1
+if "%ERRORLEVEL%"=="0" (
+    echo [INFO] Existing HWnow development process terminated.
+    set "PROCESS_KILLED=1"
+)
+
+:: Kill any process containing HWnow in the name (comprehensive cleanup)
+wmic process where "name like '%%HWnow%%'" delete >NUL 2>&1
+if "%ERRORLEVEL%"=="0" (
+    echo [INFO] Additional HWnow processes terminated.
+    set "PROCESS_KILLED=1"
+)
+
+if "%PROCESS_KILLED%"=="1" (
+    echo [INFO] Waiting for processes to fully terminate...
+    ping 127.0.0.1 -n 3 >NUL 2>&1
 ) else (
-    echo [INFO] No existing HWnow process found.
+    echo [INFO] No existing HWnow processes found.
 )
 goto :eof
 
