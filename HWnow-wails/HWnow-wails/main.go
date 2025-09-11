@@ -17,9 +17,10 @@ func main() {
 
 	// Create application with options
 	err := wails.Run(&options.App{
-		Title:  "HWnow - Hardware Monitor",
-		Width:  1024,
-		Height: 768,
+		Title:            "HWnow - Hardware Monitor",
+		Width:            1024,
+		Height:           768,
+		WindowStartState: options.Fullscreen,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
