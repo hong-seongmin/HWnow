@@ -20,7 +20,7 @@ func main() {
 		Title:            "HWnow - Hardware Monitor",
 		Width:            1024,
 		Height:           768,
-		WindowStartState: options.Fullscreen,
+		WindowStartState: options.Normal,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
