@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Responsive, WidthProvider } from 'react-grid-layout';
-import type { Layout } from 'react-grid-layout';
+import type { Layout, Layouts } from 'react-grid-layout';
 import { useDashboardStore } from '../../stores/dashboardStore';
 import { useHistoryStore } from '../../stores/historyStore';
 import { RemoveWidgetCommand, UpdateLayoutCommand } from '../../stores/commands';
@@ -25,7 +25,14 @@ import { WailsEventService } from '../../services/wailsEventService';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import './Dashboard.css';
-import type { WidgetType } from '../../stores/types';
+import type { WidgetType, ResponsiveLayouts, Breakpoint } from '../../stores/types';
+import {
+  getCurrentBreakpoint,
+  generateResponsiveLayouts,
+  validateLayout,
+  BREAKPOINTS,
+  BREAKPOINT_CONFIGS
+} from '../../utils/layoutUtils';
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
 
@@ -63,10 +70,44 @@ const Dashboard = () => {
   const { pages, activePageIndex, isInitialized, actions } = useDashboardStore();
   const { actions: historyActions } = useHistoryStore();
   const { showSuccess, showError } = useToast();
-  
+
   const activePage = pages[activePageIndex];
-  const layouts = activePage?.layouts || [];
   const widgets = activePage?.widgets || [];
+
+  // Current breakpoint state
+  const [currentBreakpoint, setCurrentBreakpoint] = useState<Breakpoint>(getCurrentBreakpoint());
+
+  // Get responsive layouts or generate from legacy layouts
+  const getResponsiveLayouts = useCallback((): Layouts => {
+    if (!activePage) return {};
+
+    // If responsive layouts exist, use them
+    if (activePage.responsiveLayouts && Object.keys(activePage.responsiveLayouts).length > 0) {
+      const responsiveLayouts: Layouts = {};
+      Object.entries(activePage.responsiveLayouts).forEach(([breakpoint, layouts]) => {
+        if (layouts) {
+          responsiveLayouts[breakpoint] = validateLayout(layouts, breakpoint as Breakpoint);
+        }
+      });
+      return responsiveLayouts;
+    }
+
+    // Fallback: generate from legacy layouts
+    if (activePage.layouts && activePage.layouts.length > 0) {
+      const generated = generateResponsiveLayouts(activePage.layouts, 'lg');
+      const responsiveLayouts: Layouts = {};
+      Object.entries(generated).forEach(([breakpoint, layouts]) => {
+        if (layouts) {
+          responsiveLayouts[breakpoint] = validateLayout(layouts, breakpoint as Breakpoint);
+        }
+      });
+      return responsiveLayouts;
+    }
+
+    return {};
+  }, [activePage]);
+
+  const responsiveLayouts = getResponsiveLayouts();
   
 
   // Context menu state
@@ -125,6 +166,20 @@ const Dashboard = () => {
       actions.initialize();
     }
   }, [isInitialized, actions]);
+
+  // Handle window resize to detect breakpoint changes
+  useEffect(() => {
+    const handleResize = throttle(() => {
+      const newBreakpoint = getCurrentBreakpoint();
+      if (newBreakpoint !== currentBreakpoint) {
+        setCurrentBreakpoint(newBreakpoint);
+        console.log('[Dashboard] Breakpoint changed:', currentBreakpoint, '->', newBreakpoint);
+      }
+    }, 250);
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [currentBreakpoint]);
 
   // Track active widgets and optimize polling
   useEffect(() => {
@@ -197,22 +252,32 @@ const Dashboard = () => {
     };
   }, [bottomPadding]);
 
-  const handleLayoutChange = async (newLayout: Layout[]) => {
-    const oldLayout = layouts;
-    
-    // 즉시 UI 업데이트 및 서버 저장 (기존 방식 유지)
+  const handleLayoutChange = async (currentLayout: Layout[], layouts: Layouts) => {
+    if (!activePage) return;
+
+    const oldResponsiveLayouts = activePage.responsiveLayouts || {};
+
+    // Update responsive layouts with the new layout for current breakpoint
+    const newResponsiveLayouts: ResponsiveLayouts = {
+      ...oldResponsiveLayouts,
+      [currentBreakpoint]: currentLayout
+    };
+
     try {
-      await actions.updateLayout(newLayout);
+      await actions.updateResponsiveLayouts(newResponsiveLayouts);
     } catch (error) {
-      console.error('Failed to update layout:', error);
-      return; // 서버 저장 실패 시 히스토리 추가 중단
+      console.error('Failed to update responsive layouts:', error);
+      return;
     }
-    
-    // 히스토리에 Command 추가 (Undo/Redo용)
-    const hasChanges = JSON.stringify(oldLayout) !== JSON.stringify(newLayout);
+
+    // Add to history for undo/redo
+    const hasChanges = JSON.stringify(oldResponsiveLayouts) !== JSON.stringify(newResponsiveLayouts);
     if (hasChanges) {
-      const command = new UpdateLayoutCommand(oldLayout, newLayout);
-      // 히스토리는 비블로킹으로 처리
+      // For legacy compatibility, we'll still use the current layout for history
+      const command = new UpdateLayoutCommand(
+        oldResponsiveLayouts[currentBreakpoint] || [],
+        currentLayout
+      );
       historyActions.executeCommand(command).catch(error => {
         console.error('Failed to add layout change to history:', error);
       });
@@ -288,14 +353,20 @@ const Dashboard = () => {
     };
   }, [selectAllWidgets, selectedWidgetIds, focusedWidgetId, showSuccess, showError]);
 
-  // 레이아웃에 크기 제한 추가
-  const layoutsWithConstraints = layouts.map(layout => ({
-    ...layout,
-    minW: 3,
-    maxW: 12,
-    minH: 2,
-    maxH: 6,
-  }));
+  // Apply constraints to all responsive layouts
+  const layoutsWithConstraints: Layouts = {};
+  Object.entries(responsiveLayouts).forEach(([breakpoint, layouts]) => {
+    if (layouts) {
+      const config = BREAKPOINT_CONFIGS[breakpoint as Breakpoint];
+      layoutsWithConstraints[breakpoint] = layouts.map(layout => ({
+        ...layout,
+        minW: Math.max(1, Math.min(3, config.cols)),
+        maxW: config.cols,
+        minH: 2,
+        maxH: 6,
+      }));
+    }
+  });
 
   if (!isInitialized) {
     return <div className="dashboard-loading">Loading Dashboard...</div>;
@@ -330,9 +401,15 @@ const Dashboard = () => {
     >
       <ResponsiveGridLayout
         className="layout"
-        layouts={{ lg: layoutsWithConstraints }}
-        breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-        cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
+        layouts={layoutsWithConstraints}
+        breakpoints={BREAKPOINTS}
+        cols={{
+          lg: BREAKPOINT_CONFIGS.lg.cols,
+          md: BREAKPOINT_CONFIGS.md.cols,
+          sm: BREAKPOINT_CONFIGS.sm.cols,
+          xs: BREAKPOINT_CONFIGS.xs.cols,
+          xxs: BREAKPOINT_CONFIGS.xxs.cols
+        }}
         rowHeight={100}
         onLayoutChange={handleLayoutChange}
         draggableHandle=".widget-header"
@@ -342,6 +419,8 @@ const Dashboard = () => {
         resizeHandles={['se', 'sw', 'ne', 'nw']}
         isResizable={true}
         isDraggable={true}
+        margin={[16, 16]}
+        containerPadding={[16, 16]}
       >
         {widgets.map((widget) => {
           const WidgetComponent = widgetMap[widget.type];

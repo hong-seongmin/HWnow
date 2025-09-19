@@ -1,9 +1,17 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import type { Layout } from 'react-grid-layout';
-import type { Widget, WidgetType, Page, DashboardState, WidgetState } from './types';
+import type { Widget, WidgetType, Page, DashboardState, WidgetState, ResponsiveLayouts, Breakpoint } from './types';
 import { getWidgets, saveWidgets, deleteWidget, getPages, createPage, deletePage, updatePageName } from '../services/wailsApiService';
 import { wailsMiddleware, WailsStoreState } from './wailsStoreMiddleware';
+import {
+  generateResponsiveLayouts,
+  migrateLegacyLayout,
+  mergeResponsiveLayouts,
+  getCurrentBreakpoint,
+  validateLayout,
+  BREAKPOINT_CONFIGS
+} from '../utils/layoutUtils';
 
 // Debounce 유틸리티 함수
 function debounce<T extends (...args: any[]) => void>(func: T, delay: number) {
@@ -37,6 +45,7 @@ const createNewPage = (name: string): Page => ({
   name,
   widgets: [],
   layouts: [],
+  responsiveLayouts: {},
 });
 
 const defaultPage: Page = {
@@ -44,6 +53,7 @@ const defaultPage: Page = {
   name: 'Main Page',
   widgets: [],
   layouts: [],
+  responsiveLayouts: {},
 };
 
 // Enhanced Dashboard Store with Wails integration
@@ -90,8 +100,8 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
               } catch {
                 console.error(`Failed to parse config for widget ${ws.widgetId}`);
               }
-              
-              const layout = ws.layout ? JSON.parse(ws.layout) : {};
+
+              const layoutData = ws.layout ? JSON.parse(ws.layout) : {};
 
               widgets.push({
                 i: ws.widgetId,
@@ -99,20 +109,39 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
                 config: config,
               });
 
-              layouts.push({
-                i: ws.widgetId,
-                x: layout.x ?? 0,
-                y: layout.y ?? 0,
-                w: layout.w ?? 6,
-                h: layout.h ?? 2,
-              });
+              // Handle both legacy single layout and new responsive layouts
+              if (layoutData.lg || layoutData.md || layoutData.sm || layoutData.xs || layoutData.xxs) {
+                // New responsive layout format
+                // For legacy compatibility, we'll still populate the layouts array with lg layout
+                const lgLayout = layoutData.lg || layoutData.md || layoutData.sm || layoutData.xs || layoutData.xxs || {};
+                layouts.push({
+                  i: ws.widgetId,
+                  x: lgLayout.x ?? 0,
+                  y: lgLayout.y ?? 0,
+                  w: lgLayout.w ?? 6,
+                  h: lgLayout.h ?? 2,
+                });
+              } else {
+                // Legacy single layout format
+                layouts.push({
+                  i: ws.widgetId,
+                  x: layoutData.x ?? 0,
+                  y: layoutData.y ?? 0,
+                  w: layoutData.w ?? 6,
+                  h: layoutData.h ?? 2,
+                });
+              }
             });
             
+            // Generate responsive layouts from the base layout
+            const responsiveLayouts = layouts.length > 0 ? migrateLegacyLayout(layouts) : {};
+
             pages.push({
               id: pageState.pageId,
               name: pageState.pageName,
               widgets,
-              layouts,
+              layouts, // Keep for legacy compatibility
+              responsiveLayouts,
             });
           }
           
@@ -268,10 +297,14 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
       };
 
       set((state) => {
+        const currentLayouts = [...activePage.layouts, newLayout];
+        const newResponsiveLayouts = generateResponsiveLayouts(currentLayouts, 'lg');
+
         const updatedPage = {
           ...activePage,
           widgets: [...activePage.widgets, newWidget],
-          layouts: [...activePage.layouts, newLayout],
+          layouts: currentLayouts,
+          responsiveLayouts: mergeResponsiveLayouts(activePage.responsiveLayouts || {}, newResponsiveLayouts),
         };
         const newPages = [...state.pages];
         newPages[state.activePageIndex] = updatedPage;
@@ -323,12 +356,41 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
         newPages[state.activePageIndex] = updatedPage;
         return { pages: newPages };
       });
-      
+
       // 레이아웃 변경은 즉시 서버에 반영
       try {
         await get().actions.saveStateImmediate();
       } catch (error) {
         console.error('Failed to save layout change immediately:', error);
+        // 실패 시 디바운스된 저장을 백업으로 사용
+        get().actions.saveState();
+      }
+    },
+
+    updateResponsiveLayouts: async (responsiveLayouts: ResponsiveLayouts) => {
+      set((state) => {
+        const activePage = state.pages[state.activePageIndex];
+
+        // Update both legacy layouts (for compatibility) and responsive layouts
+        const currentBreakpoint = getCurrentBreakpoint();
+        const currentLayout = responsiveLayouts[currentBreakpoint] || activePage.layouts;
+
+        const updatedPage = {
+          ...activePage,
+          layouts: currentLayout,
+          responsiveLayouts: mergeResponsiveLayouts(activePage.responsiveLayouts || {}, responsiveLayouts)
+        };
+
+        const newPages = [...state.pages];
+        newPages[state.activePageIndex] = updatedPage;
+        return { pages: newPages };
+      });
+
+      // 반응형 레이아웃 변경은 즉시 서버에 반영
+      try {
+        await get().actions.saveStateImmediate();
+      } catch (error) {
+        console.error('Failed to save responsive layout change immediately:', error);
         // 실패 시 디바운스된 저장을 백업으로 사용
         get().actions.saveState();
       }
@@ -359,18 +421,39 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
 
       const widgetStates: WidgetState[] = activePage.widgets.map(widget => {
         const layout = activePage.layouts.find(l => l.i === widget.i);
+        const responsiveLayouts = activePage.responsiveLayouts || {};
+
+        // Create responsive layout data for this widget
+        const widgetResponsiveLayout: any = {};
+        Object.entries(responsiveLayouts).forEach(([breakpoint, layouts]) => {
+          const breakpointLayout = layouts?.find(l => l.i === widget.i);
+          if (breakpointLayout) {
+            widgetResponsiveLayout[breakpoint] = {
+              x: breakpointLayout.x,
+              y: breakpointLayout.y,
+              w: breakpointLayout.w,
+              h: breakpointLayout.h,
+            };
+          }
+        });
+
+        // If no responsive layouts exist, fall back to legacy format
+        const layoutData = Object.keys(widgetResponsiveLayout).length > 0
+          ? widgetResponsiveLayout
+          : {
+              x: layout?.x ?? 0,
+              y: layout?.y ?? 0,
+              w: layout?.w ?? 6,
+              h: layout?.h ?? 2,
+            };
+
         return {
           userId,
           pageId: activePage.id,
           widgetId: widget.i,
           widgetType: widget.type,
           config: JSON.stringify(widget.config || {}),
-          layout: JSON.stringify({
-            x: layout?.x ?? 0,
-            y: layout?.y ?? 0,
-            w: layout?.w ?? 6,
-            h: layout?.h ?? 2,
-          }),
+          layout: JSON.stringify(layoutData),
         };
       });
       
@@ -420,18 +503,39 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
 
       const widgetStates: WidgetState[] = activePage.widgets.map(widget => {
         const layout = activePage.layouts.find(l => l.i === widget.i);
+        const responsiveLayouts = activePage.responsiveLayouts || {};
+
+        // Create responsive layout data for this widget
+        const widgetResponsiveLayout: any = {};
+        Object.entries(responsiveLayouts).forEach(([breakpoint, layouts]) => {
+          const breakpointLayout = layouts?.find(l => l.i === widget.i);
+          if (breakpointLayout) {
+            widgetResponsiveLayout[breakpoint] = {
+              x: breakpointLayout.x,
+              y: breakpointLayout.y,
+              w: breakpointLayout.w,
+              h: breakpointLayout.h,
+            };
+          }
+        });
+
+        // If no responsive layouts exist, fall back to legacy format
+        const layoutData = Object.keys(widgetResponsiveLayout).length > 0
+          ? widgetResponsiveLayout
+          : {
+              x: layout?.x ?? 0,
+              y: layout?.y ?? 0,
+              w: layout?.w ?? 6,
+              h: layout?.h ?? 2,
+            };
+
         return {
           userId,
           pageId: activePage.id,
           widgetId: widget.i,
           widgetType: widget.type,
           config: JSON.stringify(widget.config || {}),
-          layout: JSON.stringify({
-            x: layout?.x ?? 0,
-            y: layout?.y ?? 0,
-            w: layout?.w ?? 6,
-            h: layout?.h ?? 2,
-          }),
+          layout: JSON.stringify(layoutData),
         };
       });
       

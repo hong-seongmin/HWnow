@@ -1,5 +1,13 @@
 import type { Layout } from 'react-grid-layout';
 
+// Responsive breakpoints
+export type Breakpoint = 'lg' | 'md' | 'sm' | 'xs' | 'xxs';
+
+// Responsive layouts for different screen sizes
+export type ResponsiveLayouts = {
+  [key in Breakpoint]?: Layout[];
+};
+
 // Widget types
 export type WidgetType = 'cpu' | 'ram' | 'disk_read' | 'disk_write' | 'net_sent' | 'net_recv' | 
   'gpu' | 'gpu_process' | 'system_uptime' | 'process_monitor' | 'battery' | 'disk_space' | 'network_status' | 
@@ -129,7 +137,8 @@ export interface Page {
   id: string;
   name: string;
   widgets: Widget[];
-  layouts: Layout[];
+  layouts: Layout[]; // Legacy support - will be converted to responsiveLayouts
+  responsiveLayouts?: ResponsiveLayouts; // New responsive layout support
 }
 
 export interface DashboardState {
@@ -146,6 +155,7 @@ export interface DashboardState {
     addWidget: (type: WidgetType) => void;
     removeWidget: (widgetId: string) => void;
     updateLayout: (layouts: Layout[]) => Promise<void>;
+    updateResponsiveLayouts: (responsiveLayouts: ResponsiveLayouts) => Promise<void>;
     updateWidgetConfig: (widgetId: string, config: Partial<WidgetConfig>) => void;
     
     saveState: () => void;
