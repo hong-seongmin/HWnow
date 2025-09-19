@@ -93,7 +93,7 @@ echo [2/3] Stopping existing processes...
 :: Kill all HWnow related processes (production and development versions)
 set "PROCESS_KILLED=0"
 
-taskkill /IM "HWnow-wails.exe" /F >NUL 2>&1
+taskkill /IM "HWnow.exe" /F >NUL 2>&1
 if "%ERRORLEVEL%"=="0" (
     echo [INFO] Existing HWnow production process terminated.
     set "PROCESS_KILLED=1"
@@ -187,16 +187,16 @@ if errorlevel 1 (
 )
 
 :: Copy executable to root directory for convenience
-if exist "build\bin\HWnow-wails.exe" (
-    copy "build\bin\HWnow-wails.exe" "..\..\HWnow-wails.exe"
+if exist "build\bin\HWnow.exe" (
+    copy "build\bin\HWnow.exe" "..\..\HWnow.exe"
     echo.
     echo ===================================================================
     echo  Production Build Complete!
     echo ===================================================================
-    echo  Created: HWnow-wails.exe
-    for %%I in (..\..\HWnow-wails.exe) do echo  Size: %%~zI bytes
+    echo  Created: HWnow.exe
+    for %%I in (..\..\HWnow.exe) do echo  Size: %%~zI bytes
     echo.
-    echo  Usage: Double-click HWnow-wails.exe to run the desktop application
+    echo  Usage: Double-click HWnow.exe to run the desktop application
     echo ===================================================================
 ) else (
     echo [ERROR] Production executable not found.
