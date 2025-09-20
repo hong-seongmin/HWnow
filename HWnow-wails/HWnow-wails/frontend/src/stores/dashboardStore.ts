@@ -5,13 +5,9 @@ import type { Widget, WidgetType, Page, DashboardState, WidgetState, ResponsiveL
 import { getWidgets, saveWidgets, deleteWidget, getPages, createPage, deletePage, updatePageName } from '../services/wailsApiService';
 import { wailsMiddleware, WailsStoreState } from './wailsStoreMiddleware';
 import {
-  generateResponsiveLayouts,
-  migrateLegacyLayout,
-  mergeResponsiveLayouts,
-  getCurrentBreakpoint,
-  validateLayout,
-  BREAKPOINT_CONFIGS
+  getCurrentBreakpoint
 } from '../utils/layoutUtils';
+import { getOptimalWidgetSize } from '../utils/widgetSizeDefinitions';
 
 // Debounce 유틸리티 함수
 function debounce<T extends (...args: any[]) => void>(func: T, delay: number) {
@@ -109,26 +105,65 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
                 config: config,
               });
 
+              // Get widget-type-specific default size instead of hardcoded 6×2
+              const [defaultWidth, defaultHeight] = getOptimalWidgetSize(ws.widgetType, 'lg');
+
+              // Get minimum constraints for validation
+              const constraints = WIDGET_SIZE_CONSTRAINTS[ws.widgetType];
+              const [minWidth, minHeight] = constraints?.min || [defaultWidth, defaultHeight];
+
+              console.log(`[Initialize] Processing widget from DB:`, {
+                widgetId: ws.widgetId,
+                type: ws.widgetType,
+                expectedDefault: `${defaultWidth}×${defaultHeight}`,
+                minConstraints: `${minWidth}×${minHeight}`,
+                rawLayoutData: Object.keys(layoutData).length > 0 ? layoutData : 'empty'
+              });
+
               // Handle both legacy single layout and new responsive layouts
               if (layoutData.lg || layoutData.md || layoutData.sm || layoutData.xs || layoutData.xxs) {
                 // New responsive layout format
                 // For legacy compatibility, we'll still populate the layouts array with lg layout
                 const lgLayout = layoutData.lg || layoutData.md || layoutData.sm || layoutData.xs || layoutData.xxs || {};
+
+                // Apply size with validation
+                const width = Math.max(minWidth, lgLayout.w ?? defaultWidth);
+                const height = Math.max(minHeight, lgLayout.h ?? defaultHeight);
+
                 layouts.push({
                   i: ws.widgetId,
                   x: lgLayout.x ?? 0,
                   y: lgLayout.y ?? 0,
-                  w: lgLayout.w ?? 6,
-                  h: lgLayout.h ?? 2,
+                  w: width,
+                  h: height,
+                });
+
+                console.log(`[Initialize] Loaded responsive ${ws.widgetType} widget:`, {
+                  widgetId: ws.widgetId,
+                  dbSize: lgLayout.w && lgLayout.h ? `${lgLayout.w}×${lgLayout.h}` : 'missing',
+                  finalSize: `${width}×${height}`,
+                  usedDefault: !lgLayout.w || !lgLayout.h,
+                  corrected: width !== (lgLayout.w ?? defaultWidth) || height !== (lgLayout.h ?? defaultHeight)
                 });
               } else {
-                // Legacy single layout format
+                // Legacy single layout format - use widget-specific defaults with validation
+                const width = Math.max(minWidth, layoutData.w ?? defaultWidth);
+                const height = Math.max(minHeight, layoutData.h ?? defaultHeight);
+
                 layouts.push({
                   i: ws.widgetId,
                   x: layoutData.x ?? 0,
                   y: layoutData.y ?? 0,
-                  w: layoutData.w ?? 6,
-                  h: layoutData.h ?? 2,
+                  w: width,
+                  h: height,
+                });
+
+                console.log(`[Initialize] Loaded legacy ${ws.widgetType} widget:`, {
+                  widgetId: ws.widgetId,
+                  dbSize: layoutData.w && layoutData.h ? `${layoutData.w}×${layoutData.h}` : 'missing',
+                  finalSize: `${width}×${height}`,
+                  usedDefault: !layoutData.w || !layoutData.h,
+                  corrected: width !== (layoutData.w ?? defaultWidth) || height !== (layoutData.h ?? defaultHeight)
                 });
               }
             });
@@ -227,19 +262,27 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
     
     updatePageName: async (pageId: string, name: string) => {
       const userId = getUserId();
-      
+
       try {
         await updatePageName(userId, pageId, name);
-        
+
         // 서버 업데이트 성공 후 로컬 상태 업데이트
         set(state => ({
-          pages: state.pages.map(page => 
+          pages: state.pages.map(page =>
             page.id === pageId ? { ...page, name } : page
           )
         }));
       } catch (error) {
         console.error('Failed to update page name:', error);
       }
+    },
+
+    updatePage: (pageId: string, updatedPage: Page) => {
+      set(state => ({
+        pages: state.pages.map(page =>
+          page.id === pageId ? updatedPage : page
+        )
+      }));
     },
 
     addWidget: (type: WidgetType) => {
@@ -249,67 +292,26 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
         type,
         config: {},
       };
-      
-      // 빈 공간 찾기 함수
-      const findEmptyPosition = () => {
-        const widgetWidth = 4; // 가로 크기를 6에서 4로 줄임
-        const widgetHeight = 3; // 세로 크기를 2에서 3으로 늘림
-        const gridWidth = 12;
-        
-        // 기존 위젯들의 위치 정보 수집
-        const occupiedPositions = new Set<string>();
-        activePage.layouts.forEach(layout => {
-          for (let x = layout.x; x < layout.x + layout.w; x++) {
-            for (let y = layout.y; y < layout.y + layout.h; y++) {
-              occupiedPositions.add(`${x},${y}`);
-            }
-          }
-        });
-        
-        // 빈 공간 찾기 (위에서 아래로, 왼쪽에서 오른쪽으로)
-        for (let y = 0; y < 20; y++) { // 최대 20행까지 검색
-          for (let x = 0; x <= gridWidth - widgetWidth; x++) {
-            let canPlace = true;
-            
-            // 해당 위치에 위젯을 배치할 수 있는지 확인
-            for (let dx = 0; dx < widgetWidth && canPlace; dx++) {
-              for (let dy = 0; dy < widgetHeight && canPlace; dy++) {
-                if (occupiedPositions.has(`${x + dx},${y + dy}`)) {
-                  canPlace = false;
-                }
-              }
-            }
-            
-            if (canPlace) {
-              return { x, y, w: widgetWidth, h: widgetHeight };
-            }
-          }
-        }
-        
-        // 빈 공간을 찾지 못한 경우 맨 아래에 배치
-        return { x: 0, y: Infinity, w: widgetWidth, h: widgetHeight };
-      };
-      
-      const position = findEmptyPosition();
-      const newLayout: Layout = {
-        i: newWidget.i,
-        ...position,
-      };
+
+      console.log(`[AddWidget] Adding widget: ${type}, ID: ${newWidget.i}`);
 
       set((state) => {
-        const currentLayouts = [...activePage.layouts, newLayout];
-        const newResponsiveLayouts = generateResponsiveLayouts(currentLayouts, 'lg');
-
         const updatedPage = {
           ...activePage,
           widgets: [...activePage.widgets, newWidget],
-          layouts: currentLayouts,
-          responsiveLayouts: mergeResponsiveLayouts(activePage.responsiveLayouts || {}, newResponsiveLayouts),
+          // Remove layout persistence - layouts will be generated dynamically
+          layouts: [],
+          responsiveLayouts: {},
         };
         const newPages = [...state.pages];
         newPages[state.activePageIndex] = updatedPage;
+
+        console.log(`[AddWidget] Widget added: ${type}, total widgets: ${updatedPage.widgets.length}`);
+
         return { pages: newPages };
       });
+
+      // Save only widget data, not layouts
       get().actions.saveState();
     },
 
@@ -317,83 +319,38 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
       const userId = getUserId();
       const { pages, activePageIndex } = get();
       const activePage = pages[activePageIndex];
-      
-      // Optimistic update
-      const originalPages = pages;
-      
+
       set((state) => {
         const activePage = state.pages[state.activePageIndex];
         const updatedPage = {
           ...activePage,
           widgets: activePage.widgets.filter((w) => w.i !== widgetId),
-          layouts: activePage.layouts.filter((l) => l.i !== widgetId),
+          // Remove layout persistence
+          layouts: [],
+          responsiveLayouts: {},
         };
         const newPages = [...state.pages];
         newPages[state.activePageIndex] = updatedPage;
         return { pages: newPages };
       });
-      
+
       try {
         await deleteWidget(userId, widgetId, activePage.id);
-        console.log(`Widget ${widgetId} deleted successfully from database`);
-        
-        // 삭제는 데이터베이스에서 직접 처리되므로 추가 상태 저장 불필요
-        // saveStateImmediate() 호출 제거하여 삭제된 위젯이 다시 추가되는 것을 방지
-        
+        console.log(`Widget ${widgetId} deleted successfully`);
       } catch (error) {
-        console.error(`Failed to delete widget ${widgetId} on server`, error);
-        // Rollback on error
-        set({ pages: originalPages });
-        throw error; // Re-throw to handle in UI if needed
+        console.error(`Failed to delete widget ${widgetId}:`, error);
+        throw error;
       }
     },
 
     updateLayout: async (layouts) => {
-      set((state) => {
-        const activePage = state.pages[state.activePageIndex];
-        const updatedPage = { ...activePage, layouts };
-        const newPages = [...state.pages];
-        newPages[state.activePageIndex] = updatedPage;
-        return { pages: newPages };
-      });
-
-      // 레이아웃 변경은 즉시 서버에 반영
-      try {
-        await get().actions.saveStateImmediate();
-      } catch (error) {
-        console.error('Failed to save layout change immediately:', error);
-        // 실패 시 디바운스된 저장을 백업으로 사용
-        get().actions.saveState();
-      }
+      // Layout updates are no longer persisted - using dynamic sizing only
+      console.log('[Store] Layout update ignored - using dynamic sizing only');
     },
 
     updateResponsiveLayouts: async (responsiveLayouts: ResponsiveLayouts) => {
-      set((state) => {
-        const activePage = state.pages[state.activePageIndex];
-
-        // Update both legacy layouts (for compatibility) and responsive layouts
-        const currentBreakpoint = getCurrentBreakpoint();
-        const currentLayout = responsiveLayouts[currentBreakpoint] || activePage.layouts;
-
-        const updatedPage = {
-          ...activePage,
-          layouts: currentLayout,
-          responsiveLayouts: mergeResponsiveLayouts(activePage.responsiveLayouts || {}, responsiveLayouts)
-        };
-
-        const newPages = [...state.pages];
-        newPages[state.activePageIndex] = updatedPage;
-        return { pages: newPages };
-      });
-
-      // 반응형 레이아웃 변경은 즉시 서버에 반영
-      try {
-        await get().actions.saveStateImmediate();
-      } catch (error) {
-        console.error('Failed to save responsive layout change immediately:', error);
-        // 실패 시 디바운스된 저장을 백업으로 사용
-        get().actions.saveState();
-      }
+      // Layout updates are no longer persisted - using dynamic sizing only
+      console.log('[Store] Layout update ignored - using dynamic sizing only');
     },
     
     updateWidgetConfig: (widgetId, config) => {
@@ -437,15 +394,18 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
           }
         });
 
-        // If no responsive layouts exist, fall back to legacy format
+        // If no responsive layouts exist, fall back to widget-type-specific sizes (CRITICAL FIX)
+        const [defaultWidth, defaultHeight] = getOptimalWidgetSize(widget.type, 'lg');
         const layoutData = Object.keys(widgetResponsiveLayout).length > 0
           ? widgetResponsiveLayout
           : {
               x: layout?.x ?? 0,
               y: layout?.y ?? 0,
-              w: layout?.w ?? 6,
-              h: layout?.h ?? 2,
+              w: layout?.w ?? defaultWidth,  // Widget-specific width instead of hardcoded 6
+              h: layout?.h ?? defaultHeight, // Widget-specific height instead of hardcoded 2
             };
+
+        console.log(`[SaveStateImmediate] Widget ${widget.i} (${widget.type}): using ${Object.keys(widgetResponsiveLayout).length > 0 ? 'responsive' : 'fallback'} layout, size: ${layoutData.w || defaultWidth}×${layoutData.h || defaultHeight}`);
 
         return {
           userId,
@@ -519,15 +479,18 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
           }
         });
 
-        // If no responsive layouts exist, fall back to legacy format
+        // If no responsive layouts exist, fall back to widget-type-specific sizes (CRITICAL FIX)
+        const [defaultWidth, defaultHeight] = getOptimalWidgetSize(widget.type, 'lg');
         const layoutData = Object.keys(widgetResponsiveLayout).length > 0
           ? widgetResponsiveLayout
           : {
               x: layout?.x ?? 0,
               y: layout?.y ?? 0,
-              w: layout?.w ?? 6,
-              h: layout?.h ?? 2,
+              w: layout?.w ?? defaultWidth,  // Widget-specific width instead of hardcoded 6
+              h: layout?.h ?? defaultHeight, // Widget-specific height instead of hardcoded 2
             };
+
+        console.log(`[SaveState] Widget ${widget.i} (${widget.type}): using ${Object.keys(widgetResponsiveLayout).length > 0 ? 'responsive' : 'fallback'} layout, size: ${layoutData.w || defaultWidth}×${layoutData.h || defaultHeight}`);
 
         return {
           userId,

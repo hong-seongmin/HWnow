@@ -28,13 +28,53 @@ import './Dashboard.css';
 import type { WidgetType, ResponsiveLayouts, Breakpoint } from '../../stores/types';
 import {
   getCurrentBreakpoint,
-  generateResponsiveLayouts,
-  validateLayout,
   BREAKPOINTS,
   BREAKPOINT_CONFIGS
 } from '../../utils/layoutUtils';
+import { WIDGET_SIZE_CONSTRAINTS, getOptimalWidgetSize } from '../../utils/widgetSizeDefinitions';
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
+
+// Get widget-specific constraints helper function
+const getWidgetConstraints = (widgetId: string, widgets: any[], breakpoint: Breakpoint) => {
+  console.log(`[Dashboard] Getting constraints for widget ${widgetId}, available widgets:`, widgets.map(w => `${w.i}:${w.type}`));
+
+  const widget = widgets.find(w => w.i === widgetId);
+  console.log(`[Dashboard] Found widget:`, widget);
+
+  if (widget && widget.type) {
+    const constraints = WIDGET_SIZE_CONSTRAINTS[widget.type as WidgetType];
+    console.log(`[Dashboard] WIDGET_SIZE_CONSTRAINTS for ${widget.type}:`, constraints);
+
+    if (constraints) {
+      const config = BREAKPOINT_CONFIGS[breakpoint];
+      const result = {
+        minW: Math.min(constraints.min[0], config.cols),
+        maxW: Math.min(constraints.max[0], config.cols),
+        minH: constraints.min[1],
+        maxH: constraints.max[1]
+      };
+
+      console.log(`[Dashboard] Applied constraints for ${widget.type} widget ${widgetId}:`, result);
+      return result;
+    } else {
+      console.log(`[Dashboard] No constraints found for widget type: ${widget.type}`);
+    }
+  } else {
+    console.log(`[Dashboard] Widget not found or no type: widgetId=${widgetId}, widget=`, widget);
+  }
+
+  // Fallback to improved defaults (TDD Green Phase)
+  const config = BREAKPOINT_CONFIGS[breakpoint];
+  console.log(`[Dashboard] Using fallback constraints for widget ${widgetId} (widget not found or no type)`);
+
+  return {
+    minW: Math.min(6, config.cols),  // Improved from 3 to 6
+    maxW: config.cols,
+    minH: 3,                         // Improved from 2 to 3
+    maxH: 8                          // Improved from 6 to 8
+  };
+};
 
 // 쓰로틀링 함수 (컴포넌트 외부로 이동)
 const throttle = (func: Function, limit: number) => {
@@ -77,37 +117,87 @@ const Dashboard = () => {
   // Current breakpoint state
   const [currentBreakpoint, setCurrentBreakpoint] = useState<Breakpoint>(getCurrentBreakpoint());
 
-  // Get responsive layouts or generate from legacy layouts
-  const getResponsiveLayouts = useCallback((): Layouts => {
-    if (!activePage) return {};
+  // Generate layouts preserving existing widget positions and finding empty spots for new widgets
+  const getDynamicLayouts = useCallback((): Layouts => {
+    if (!activePage || !activePage.widgets) return {};
 
-    // If responsive layouts exist, use them
-    if (activePage.responsiveLayouts && Object.keys(activePage.responsiveLayouts).length > 0) {
-      const responsiveLayouts: Layouts = {};
-      Object.entries(activePage.responsiveLayouts).forEach(([breakpoint, layouts]) => {
-        if (layouts) {
-          responsiveLayouts[breakpoint] = validateLayout(layouts, breakpoint as Breakpoint);
+    const layouts: Layouts = {};
+    const breakpoints: Breakpoint[] = ['lg', 'md', 'sm', 'xs', 'xxs'];
+
+    breakpoints.forEach(breakpoint => {
+      const config = BREAKPOINT_CONFIGS[breakpoint];
+      const widgetLayouts: Layout[] = [];
+      const occupiedSpaces: Set<string> = new Set();
+
+      // First pass: place widgets that have saved positions
+      activePage.widgets.forEach(widget => {
+        if (widget.position?.[breakpoint]?.[0]) {
+          const savedLayout = widget.position[breakpoint][0];
+          widgetLayouts.push(savedLayout);
+
+          // Mark occupied spaces
+          for (let x = savedLayout.x; x < savedLayout.x + savedLayout.w; x++) {
+            for (let y = savedLayout.y; y < savedLayout.y + savedLayout.h; y++) {
+              occupiedSpaces.add(`${x},${y}`);
+            }
+          }
         }
       });
-      return responsiveLayouts;
-    }
 
-    // Fallback: generate from legacy layouts
-    if (activePage.layouts && activePage.layouts.length > 0) {
-      const generated = generateResponsiveLayouts(activePage.layouts, 'lg');
-      const responsiveLayouts: Layouts = {};
-      Object.entries(generated).forEach(([breakpoint, layouts]) => {
-        if (layouts) {
-          responsiveLayouts[breakpoint] = validateLayout(layouts, breakpoint as Breakpoint);
+      // Second pass: place widgets without saved positions in empty spots
+      activePage.widgets.forEach(widget => {
+        if (!widget.position?.[breakpoint]?.[0]) {
+          const [optimalWidth, optimalHeight] = getOptimalWidgetSize(widget.type, breakpoint);
+
+          // Find empty spot
+          let placed = false;
+          for (let y = 0; y < 50 && !placed; y++) { // Max 50 rows
+            for (let x = 0; x <= config.cols - optimalWidth && !placed; x++) {
+              // Check if this position is free
+              let canPlace = true;
+              for (let dx = 0; dx < optimalWidth && canPlace; dx++) {
+                for (let dy = 0; dy < optimalHeight && canPlace; dy++) {
+                  if (occupiedSpaces.has(`${x + dx},${y + dy}`)) {
+                    canPlace = false;
+                  }
+                }
+              }
+
+              if (canPlace) {
+                const newLayout: Layout = {
+                  i: widget.i,
+                  x: x,
+                  y: y,
+                  w: optimalWidth,
+                  h: optimalHeight,
+                  minW: optimalWidth,
+                  maxW: optimalWidth,
+                  minH: optimalHeight,
+                  maxH: optimalHeight
+                };
+
+                widgetLayouts.push(newLayout);
+
+                // Mark new occupied spaces
+                for (let dx = 0; dx < optimalWidth; dx++) {
+                  for (let dy = 0; dy < optimalHeight; dy++) {
+                    occupiedSpaces.add(`${x + dx},${y + dy}`);
+                  }
+                }
+                placed = true;
+              }
+            }
+          }
         }
       });
-      return responsiveLayouts;
-    }
 
-    return {};
-  }, [activePage]);
+      layouts[breakpoint] = widgetLayouts;
+    });
 
-  const responsiveLayouts = getResponsiveLayouts();
+    return layouts;
+  }, [activePage?.widgets]);
+
+  const responsiveLayouts = getDynamicLayouts();
   
 
   // Context menu state
@@ -171,15 +261,39 @@ const Dashboard = () => {
   useEffect(() => {
     const handleResize = throttle(() => {
       const newBreakpoint = getCurrentBreakpoint();
+      const windowSize = {
+        width: window.innerWidth,
+        height: window.innerHeight
+      };
+
+      console.log('[Dashboard] Window resize detected:', {
+        windowSize,
+        oldBreakpoint: currentBreakpoint,
+        newBreakpoint: newBreakpoint,
+        willTriggerChange: newBreakpoint !== currentBreakpoint
+      });
+
       if (newBreakpoint !== currentBreakpoint) {
+        console.log(`[Dashboard] *** BREAKPOINT CHANGE TRIGGERED *** ${currentBreakpoint} → ${newBreakpoint}`);
+        console.log('[Dashboard] Active widgets before breakpoint change:', widgets?.map(w => `${w.i}:${w.type}`) || []);
         setCurrentBreakpoint(newBreakpoint);
-        console.log('[Dashboard] Breakpoint changed:', currentBreakpoint, '->', newBreakpoint);
       }
     }, 250);
 
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [currentBreakpoint]);
+
+    // Log initial window state
+    console.log('[Dashboard] Window resize listener initialized:', {
+      currentSize: { width: window.innerWidth, height: window.innerHeight },
+      currentBreakpoint,
+      widgets: widgets?.length || 0
+    });
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      console.log('[Dashboard] Window resize listener removed');
+    };
+  }, [currentBreakpoint, widgets]);
 
   // Track active widgets and optimize polling
   useEffect(() => {
@@ -253,36 +367,45 @@ const Dashboard = () => {
   }, [bottomPadding]);
 
   const handleLayoutChange = async (currentLayout: Layout[], layouts: Layouts) => {
-    if (!activePage) return;
+    // Save widget positions when user manually moves or resizes widgets
+    console.log('[Dashboard] Layout change detected - saving widget positions');
 
-    const oldResponsiveLayouts = activePage.responsiveLayouts || {};
-
-    // Update responsive layouts with the new layout for current breakpoint
-    const newResponsiveLayouts: ResponsiveLayouts = {
-      ...oldResponsiveLayouts,
-      [currentBreakpoint]: currentLayout
-    };
+    if (!activePage || !currentLayout || currentLayout.length === 0) return;
 
     try {
-      await actions.updateResponsiveLayouts(newResponsiveLayouts);
-    } catch (error) {
-      console.error('Failed to update responsive layouts:', error);
-      return;
-    }
-
-    // Add to history for undo/redo
-    const hasChanges = JSON.stringify(oldResponsiveLayouts) !== JSON.stringify(newResponsiveLayouts);
-    if (hasChanges) {
-      // For legacy compatibility, we'll still use the current layout for history
-      const command = new UpdateLayoutCommand(
-        oldResponsiveLayouts[currentBreakpoint] || [],
-        currentLayout
-      );
-      historyActions.executeCommand(command).catch(error => {
-        console.error('Failed to add layout change to history:', error);
+      // Update widget positions in store
+      const updatedWidgets = activePage.widgets.map(widget => {
+        const layoutItem = currentLayout.find(item => item.i === widget.i);
+        if (layoutItem) {
+          const updatedPosition = {
+            ...widget.position,
+            [currentBreakpoint]: [layoutItem]
+          };
+          return {
+            ...widget,
+            position: updatedPosition
+          };
+        }
+        return widget;
       });
+
+      // Update the page with new widget positions
+      actions.updatePage(activePage.id, {
+        ...activePage,
+        widgets: updatedWidgets
+      });
+
+      console.log('[Dashboard] Widget positions saved for breakpoint:', currentBreakpoint);
+    } catch (error) {
+      console.error('[Dashboard] Failed to save widget positions:', error);
     }
   };
+
+  // Update current breakpoint only - layouts are dynamically generated
+  const handleBreakpointChange = useCallback((newBreakpoint: Breakpoint, newCols: number) => {
+    console.log(`[Dashboard] Breakpoint changed: ${currentBreakpoint} → ${newBreakpoint}, cols: ${newCols}`);
+    setCurrentBreakpoint(newBreakpoint);
+  }, [currentBreakpoint]);
 
   const handleRemoveWidget = async (widgetId: string) => {
     const widget = widgets.find((w) => w.i === widgetId);
@@ -353,18 +476,23 @@ const Dashboard = () => {
     };
   }, [selectAllWidgets, selectedWidgetIds, focusedWidgetId, showSuccess, showError]);
 
-  // Apply constraints to all responsive layouts
+  // Apply widget-type-aware constraints to all responsive layouts
   const layoutsWithConstraints: Layouts = {};
   Object.entries(responsiveLayouts).forEach(([breakpoint, layouts]) => {
     if (layouts) {
-      const config = BREAKPOINT_CONFIGS[breakpoint as Breakpoint];
-      layoutsWithConstraints[breakpoint] = layouts.map(layout => ({
-        ...layout,
-        minW: Math.max(1, Math.min(3, config.cols)),
-        maxW: config.cols,
-        minH: 2,
-        maxH: 6,
-      }));
+      layoutsWithConstraints[breakpoint] = layouts.map(layout => {
+        const constraints = getWidgetConstraints(layout.i, widgets, breakpoint as Breakpoint);
+
+        console.log(`[Dashboard] Applying constraints for widget ${layout.i}: minW=${constraints.minW}, minH=${constraints.minH}, maxW=${constraints.maxW}, maxH=${constraints.maxH}`);
+
+        return {
+          ...layout,
+          minW: constraints.minW,
+          maxW: constraints.maxW,
+          minH: constraints.minH,
+          maxH: constraints.maxH,
+        };
+      });
     }
   });
 
@@ -412,6 +540,7 @@ const Dashboard = () => {
         }}
         rowHeight={100}
         onLayoutChange={handleLayoutChange}
+        onBreakpointChange={handleBreakpointChange}
         draggableHandle=".widget-header"
         draggableCancel=".widget-action-button, .remove-widget-button"
         compactType={null}
