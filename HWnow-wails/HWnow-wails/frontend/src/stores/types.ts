@@ -131,6 +131,7 @@ export interface Widget {
   i: string;
   type: WidgetType;
   config?: WidgetConfig; // 위젯별 설정 추가
+  position?: ResponsiveLayouts; // 각 브레이크포인트별 고정 위치 정보
 }
 
 export interface Page {
@@ -151,7 +152,8 @@ export interface DashboardState {
     removePage: (pageId: string) => void;
     setActivePageIndex: (index: number) => void;
     updatePageName: (pageId: string, name: string) => void;
-    
+    updatePage: (pageId: string, updatedPage: Page) => void;
+
     addWidget: (type: WidgetType) => void;
     removeWidget: (widgetId: string) => void;
     updateLayout: (layouts: Layout[]) => Promise<void>;
