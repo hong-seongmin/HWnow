@@ -10,7 +10,6 @@ export class AddWidgetCommand implements Command {
   private widgetId: string;
   private widgetType: WidgetType;
   private widget: Widget | null = null;
-  private layout: Layout | null = null;
   
   constructor(widgetType: WidgetType) {
     this.widgetId = uuidv4();
@@ -27,48 +26,46 @@ export class AddWidgetCommand implements Command {
   
   async execute(): Promise<void> {
     const { pages, activePageIndex } = useDashboardStore.getState();
-    const activePage = pages[activePageIndex];
-    
-    // 새 위젯 생성
+
+    // 새 위젯 생성 (레이아웃은 동적으로 생성됨)
     this.widget = {
       i: this.widgetId,
       type: this.widgetType,
       config: {},
     };
-    
-    // 빈 공간 찾기
-    const position = this.findEmptyPosition(activePage.layouts);
-    this.layout = {
-      i: this.widgetId,
-      ...position,
-    };
-    
-    // Zustand 올바른 상태 업데이트 패턴
+
+    console.log(`[AddWidgetCommand] Adding widget: ${this.widgetType}, ID: ${this.widgetId}`);
+
+    // 위젯만 추가, 레이아웃은 동적 생성 시스템에 맡김
     useDashboardStore.setState(state => ({
       pages: state.pages.map((page, index) =>
         index === activePageIndex
           ? {
               ...page,
               widgets: [...page.widgets, this.widget!],
-              layouts: [...page.layouts, this.layout!],
+              // 레이아웃은 빈 상태 유지 - 동적으로 생성됨
+              layouts: [],
+              responsiveLayouts: {},
             }
           : page
       )
     }));
-    
-    // 즉시 서버 동기화 (디바운스 없음)
+
+    // 위젯 데이터만 서버에 저장
     try {
-      await useDashboardStore.getState().actions.saveStateImmediate();
+      await useDashboardStore.getState().actions.saveState();
+      console.log(`[AddWidgetCommand] Widget ${this.widgetType} added successfully`);
     } catch (error) {
       console.error('Failed to save widget addition to server:', error);
-      // 실패 시 롤백 
+      // 실패 시 롤백
       useDashboardStore.setState(state => ({
         pages: state.pages.map((page, index) =>
           index === activePageIndex
             ? {
                 ...page,
                 widgets: page.widgets.filter(w => w.i !== this.widgetId),
-                layouts: page.layouts.filter(l => l.i !== this.widgetId),
+                layouts: [],
+                responsiveLayouts: {},
               }
             : page
         )
@@ -79,68 +76,33 @@ export class AddWidgetCommand implements Command {
   
   undo(): void {
     const { activePageIndex } = useDashboardStore.getState();
-    
-    // Zustand 올바른 상태 업데이트 패턴
+
+    console.log(`[AddWidgetCommand] Undoing widget addition: ${this.widgetType}, ID: ${this.widgetId}`);
+
+    // 위젯만 제거, 레이아웃은 동적 생성 시스템에 맡김
     useDashboardStore.setState(state => ({
       pages: state.pages.map((page, index) =>
         index === activePageIndex
           ? {
               ...page,
               widgets: page.widgets.filter(w => w.i !== this.widgetId),
-              layouts: page.layouts.filter(l => l.i !== this.widgetId),
+              layouts: [],
+              responsiveLayouts: {},
             }
           : page
       )
     }));
-    
+
     // 서버 동기화
     useDashboardStore.getState().actions.saveState();
   }
   
-  private findEmptyPosition(layouts: Layout[]) {
-    const widgetWidth = 4;
-    const widgetHeight = 3;
-    const gridWidth = 12;
-    
-    // 기존 위젯들의 위치 정보 수집
-    const occupiedPositions = new Set<string>();
-    layouts.forEach(layout => {
-      for (let x = layout.x; x < layout.x + layout.w; x++) {
-        for (let y = layout.y; y < layout.y + layout.h; y++) {
-          occupiedPositions.add(`${x},${y}`);
-        }
-      }
-    });
-    
-    // 빈 공간 찾기
-    for (let y = 0; y < 20; y++) {
-      for (let x = 0; x <= gridWidth - widgetWidth; x++) {
-        let canPlace = true;
-        
-        for (let dx = 0; dx < widgetWidth && canPlace; dx++) {
-          for (let dy = 0; dy < widgetHeight && canPlace; dy++) {
-            if (occupiedPositions.has(`${x + dx},${y + dy}`)) {
-              canPlace = false;
-            }
-          }
-        }
-        
-        if (canPlace) {
-          return { x, y, w: widgetWidth, h: widgetHeight };
-        }
-      }
-    }
-    
-    // 빈 공간을 찾지 못한 경우
-    return { x: 0, y: layouts.length * 3, w: widgetWidth, h: widgetHeight };
-  }
 }
 
 // 위젯 제거 명령
 export class RemoveWidgetCommand implements Command {
   private widgetId: string;
   private removedWidget: Widget | null = null;
-  private removedLayout: Layout | null = null;
   
   constructor(widgetId: string) {
     this.widgetId = widgetId;
@@ -158,66 +120,77 @@ export class RemoveWidgetCommand implements Command {
   async execute(): Promise<void> {
     const { pages, activePageIndex } = useDashboardStore.getState();
     const activePage = pages[activePageIndex];
-    
-    // 제거할 위젯과 레이아웃 저장
+
+    // 제거할 위젯만 저장 (레이아웃은 동적 생성됨)
     this.removedWidget = activePage.widgets.find(w => w.i === this.widgetId) || null;
-    this.removedLayout = activePage.layouts.find(l => l.i === this.widgetId) || null;
-    
-    if (!this.removedWidget || !this.removedLayout) {
+
+    if (!this.removedWidget) {
       throw new Error(`Widget ${this.widgetId} not found`);
     }
-    
-    // Optimistic update (기존 removeWidget과 동일한 방식)
-    const originalPages = pages;
-    
-    // Zustand 올바른 상태 업데이트 패턴
+
+    console.log(`[RemoveWidgetCommand] Removing widget: ${this.removedWidget.type}, ID: ${this.widgetId}`);
+
+    // 위젯만 제거, 레이아웃은 동적 생성 시스템에 맡김
     useDashboardStore.setState(state => ({
       pages: state.pages.map((page, index) =>
         index === activePageIndex
           ? {
               ...page,
               widgets: page.widgets.filter(w => w.i !== this.widgetId),
-              layouts: page.layouts.filter(l => l.i !== this.widgetId),
+              layouts: [],
+              responsiveLayouts: {},
             }
           : page
       )
     }));
-    
-    // 서버 동기화 (기존 removeWidget과 동일한 방식)
+
+    // 서버에서 위젯 삭제
     try {
-      const getUserId = (): string => {
-        // 모든 브라우저에서 동일한 사용자 ID 사용 (공통 대시보드)
-        return 'global-user';
-      };
+      const getUserId = (): string => 'global-user';
       await deleteWidget(getUserId(), this.widgetId, activePage.id);
+      console.log(`[RemoveWidgetCommand] Widget ${this.widgetId} deleted successfully`);
     } catch (error) {
       console.error(`Failed to delete widget ${this.widgetId} on server`, error);
-      // 롤백
-      useDashboardStore.setState({ pages: originalPages });
+      // 롤백: 위젯 복원
+      useDashboardStore.setState(state => ({
+        pages: state.pages.map((page, index) =>
+          index === activePageIndex
+            ? {
+                ...page,
+                widgets: [...page.widgets, this.removedWidget!],
+                layouts: [],
+                responsiveLayouts: {},
+              }
+            : page
+        )
+      }));
       throw error;
     }
   }
   
   undo(): void {
-    if (!this.removedWidget || !this.removedLayout) {
+    if (!this.removedWidget) {
       throw new Error('Cannot undo: removed widget data not found');
     }
-    
+
     const { activePageIndex } = useDashboardStore.getState();
-    
-    // Zustand 올바른 상태 업데이트 패턴
+
+    console.log(`[RemoveWidgetCommand] Undoing widget removal: ${this.removedWidget.type}, ID: ${this.widgetId}`);
+
+    // 위젯만 복원, 레이아웃은 동적 생성 시스템에 맡김
     useDashboardStore.setState(state => ({
       pages: state.pages.map((page, index) =>
         index === activePageIndex
           ? {
               ...page,
               widgets: [...page.widgets, this.removedWidget!],
-              layouts: [...page.layouts, this.removedLayout!],
+              layouts: [],
+              responsiveLayouts: {},
             }
           : page
       )
     }));
-    
+
     // 서버 동기화
     useDashboardStore.getState().actions.saveState();
   }
