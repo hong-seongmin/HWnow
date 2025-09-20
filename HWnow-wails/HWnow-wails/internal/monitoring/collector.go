@@ -4871,57 +4871,145 @@ func SetGPUProcessPriority(pid int32, priority string) error {
 
 // GetCPUCores returns the number of CPU cores
 func GetCPUCores() (int, error) {
-	// Try to get CPU info with a timeout context
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	// First try: Windows WMI approach for core count
+	if runtime.GOOS == "windows" {
+		if cores := getCPUCoresFromWMI(); cores > 0 {
+			LogInfo("CPU cores retrieved from WMI", "cores", cores)
+			return cores, nil
+		}
+	}
+
+	// Second try: gopsutil with increased timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	cpuInfo, err := cpu.InfoWithContext(ctx)
 	if err != nil {
 		// Fallback to runtime.NumCPU() if gopsutil fails
 		LogWarn("Failed to get CPU info from gopsutil, using runtime fallback", "error", err)
 		return runtime.NumCPU(), nil
 	}
-	
+
 	if len(cpuInfo) == 0 {
 		// Fallback to runtime.NumCPU() if no CPU info available
 		LogWarn("No CPU info available from gopsutil, using runtime fallback")
 		return runtime.NumCPU(), nil
 	}
-	
+
 	// Verify the core count is reasonable
 	cores := int(cpuInfo[0].Cores)
 	if cores <= 0 {
 		LogWarn("Invalid CPU core count from gopsutil, using runtime fallback", "reported_cores", cores)
 		return runtime.NumCPU(), nil
 	}
-	
+
+	LogInfo("CPU cores retrieved from gopsutil", "cores", cores)
 	return cores, nil
+}
+
+// getCPUCoresFromWMI retrieves CPU core count using Windows WMI
+func getCPUCoresFromWMI() int {
+	if runtime.GOOS != "windows" {
+		return 0
+	}
+
+	// Use wmic command to get CPU core count
+	cmd := exec.Command("wmic", "cpu", "get", "NumberOfCores", "/format:csv")
+	output, err := cmd.Output()
+	if err != nil {
+		LogWarn("Failed to get CPU cores from wmic", "error", err)
+		return 0
+	}
+
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.Contains(line, "Node,NumberOfCores") {
+			continue
+		}
+
+		// Parse CSV format: Node,NumberOfCores
+		parts := strings.Split(line, ",")
+		if len(parts) >= 2 {
+			coreStr := strings.TrimSpace(parts[1])
+			if coreStr != "" && coreStr != "NumberOfCores" {
+				if cores, err := strconv.Atoi(coreStr); err == nil && cores > 0 {
+					return cores
+				}
+			}
+		}
+	}
+
+	return 0
 }
 
 // GetCPUModelName returns the CPU model name
 func GetCPUModelName() (string, error) {
-	// Try to get CPU info with a timeout context
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	// First try: Windows WMI approach (faster and more reliable on Windows)
+	if runtime.GOOS == "windows" {
+		if modelName := getCPUModelFromWMI(); modelName != "" {
+			LogInfo("CPU model retrieved from WMI", "model", modelName)
+			return modelName, nil
+		}
+	}
+
+	// Second try: gopsutil with increased timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	cpuInfo, err := cpu.InfoWithContext(ctx)
 	if err != nil {
 		LogWarn("Failed to get CPU model name from gopsutil", "error", err)
 		return "Unknown CPU", nil
 	}
-	
+
 	if len(cpuInfo) == 0 {
 		LogWarn("No CPU model info available from gopsutil")
 		return "Unknown CPU", nil
 	}
-	
+
 	modelName := strings.TrimSpace(cpuInfo[0].ModelName)
 	if modelName == "" {
 		LogWarn("Empty CPU model name from gopsutil")
 		return "Unknown CPU", nil
 	}
-	
+
+	LogInfo("CPU model retrieved from gopsutil", "model", modelName)
 	return modelName, nil
+}
+
+// getCPUModelFromWMI retrieves CPU model using Windows WMI
+func getCPUModelFromWMI() string {
+	if runtime.GOOS != "windows" {
+		return ""
+	}
+
+	// Use wmic command to get CPU info
+	cmd := exec.Command("wmic", "cpu", "get", "Name", "/format:csv")
+	output, err := cmd.Output()
+	if err != nil {
+		LogWarn("Failed to get CPU info from wmic", "error", err)
+		return ""
+	}
+
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.Contains(line, "Node,Name") {
+			continue
+		}
+
+		// Parse CSV format: Node,Name
+		parts := strings.Split(line, ",")
+		if len(parts) >= 2 {
+			cpuName := strings.TrimSpace(parts[1])
+			if cpuName != "" && cpuName != "Name" {
+				return cpuName
+			}
+		}
+	}
+
+	return ""
 }
 
 // GetTotalMemory returns total system memory in MB
