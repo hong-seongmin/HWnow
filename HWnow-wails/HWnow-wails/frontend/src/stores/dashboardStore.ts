@@ -5,11 +5,13 @@ import type { Widget, WidgetType, Page, DashboardState, WidgetState, ResponsiveL
 import { getWidgets, saveWidgets, deleteWidget, getPages, createPage, deletePage, updatePageName } from '../services/wailsApiService';
 import { wailsMiddleware, WailsStoreState } from './wailsStoreMiddleware';
 import {
-  getCurrentBreakpoint
+  getCurrentBreakpoint,
+  migrateLegacyLayout
 } from '../utils/layoutUtils';
-import { getOptimalWidgetSize } from '../utils/widgetSizeDefinitions';
+import { getOptimalWidgetSize, WIDGET_SIZE_CONSTRAINTS } from '../utils/widgetSizeDefinitions';
+import { widgetLoadingLog, widgetOperationsLog } from '../utils/debugConfig';
 
-// Debounce 유틸리티 함수
+// Debounce ?�틸리티 ?�수
 function debounce<T extends (...args: any[]) => void>(func: T, delay: number) {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   return function(this: ThisParameterType<T>, ...args: Parameters<T>) {
@@ -23,11 +25,11 @@ function debounce<T extends (...args: any[]) => void>(func: T, delay: number) {
 }
 
 const getUserId = (): string => {
-  // 모든 브라우저에서 동일한 사용자 ID 사용 (공통 대시보드)
+  // 모든 브라?��??�서 ?�일???�용??ID ?�용 (공통 ?�?�보??
   return 'global-user';
 };
 
-// 위젯 상태 비교를 위한 해시 생성 함수
+// ?�젯 ?�태 비교�??�한 ?�시 ?�성 ?�수
 const generateStateHash = (widgets: Widget[], layouts: Layout[]): string => {
   const stateData = {
     widgets: widgets.map(w => ({ i: w.i, type: w.type, config: w.config })),
@@ -53,7 +55,7 @@ const defaultPage: Page = {
 };
 
 // Enhanced Dashboard Store with Wails integration
-// 추가 상태 타입 정의
+// 추�? ?�태 ?�???�의
 interface ExtendedDashboardState extends DashboardState {
   lastSavedHash: string | null;
   isAutosaving: boolean;
@@ -71,38 +73,72 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
   actions: {
     initialize: async () => {
       const userId = getUserId();
-      console.log('[Dashboard] Initializing dashboard, loading from server...');
-      
+      widgetLoadingLog('[WIDGET_INIT] Dashboard: ?? Starting dashboard initialization for user:', userId);
+
       try {
-        // 페이지 목록 로드
+        // ?�이지 목록 로드
         const pageStates = await getPages(userId);
-        console.log('[Dashboard] Loaded pages from server:', pageStates?.length || 0);
+        widgetLoadingLog('[WIDGET_INIT] Dashboard: ?�� Loaded pages from server:', pageStates?.length || 0);
         
         if (pageStates && pageStates.length > 0) {
-          // 각 페이지의 위젯들을 로드
+          // �??�이지???�젯?�을 로드
           const pages: Page[] = [];
           
           for (const pageState of pageStates) {
+            widgetLoadingLog(`[WIDGET_INIT] Dashboard: ?�� Loading widgets for page ${pageState.pageId}...`);
             const widgetStates = await getWidgets(userId, pageState.pageId);
-            console.log(`[Dashboard] Loaded widgets for page ${pageState.pageId}:`, widgetStates.length);
+            widgetLoadingLog(`[WIDGET_INIT] Dashboard: ??Loaded ${widgetStates.length} widgets for page ${pageState.pageId}`);
             
             const widgets: Widget[] = [];
             const layouts: Layout[] = [];
             
             widgetStates.forEach(ws => {
-              let config = {};
-              try {
-                config = ws.config ? JSON.parse(ws.config) : {};
-              } catch {
-                console.error(`Failed to parse config for widget ${ws.widgetId}`);
+              let config: Record<string, any> = {};
+              if (ws.config) {
+                if (typeof ws.config === 'string') {
+                  try {
+                    config = ws.config ? JSON.parse(ws.config) : {};
+                  } catch (error) {
+                    widgetLoadingLog(`[WIDGET_INIT] Dashboard: ??Failed to parse config for widget ${ws.widgetId}`, error);
+                    config = {};
+                  }
+                } else if (typeof ws.config === 'object') {
+                  config = ws.config as Record<string, any>;
+                }
               }
 
-              const layoutData = ws.layout ? JSON.parse(ws.layout) : {};
+              let layoutData: Record<string, any> = {};
+              if (ws.layout) {
+                if (typeof ws.layout === 'string') {
+                  try {
+                    layoutData = ws.layout ? JSON.parse(ws.layout) : {};
+                  } catch (error) {
+                    widgetLoadingLog(`[WIDGET_INIT] Dashboard: ??Failed to parse layout for widget ${ws.widgetId}`, error);
+                    layoutData = {};
+                  }
+                } else if (typeof ws.layout === 'object') {
+                  layoutData = ws.layout as Record<string, any>;
+                }
+              }
+
+              widgetLoadingLog(`[WIDGET_INIT] Dashboard: ?�️ Processing widget ${ws.widgetId} from database:`, {
+                type: ws.widgetType,
+                hasConfig: !!ws.config,
+                hasLayout: !!ws.layout,
+                layoutDataKeys: Object.keys(layoutData),
+                layoutDataPreview: JSON.stringify(layoutData).substring(0, 100) + (JSON.stringify(layoutData).length > 100 ? '...' : '')
+              });
 
               widgets.push({
                 i: ws.widgetId,
                 type: ws.widgetType,
                 config: config,
+                position: layoutData  // Store position data directly in widget
+              });
+
+              widgetLoadingLog(`[WIDGET_INIT] Dashboard: ??Widget ${ws.widgetId} added to widgets array with position:`, {
+                hasPosition: !!layoutData && Object.keys(layoutData).length > 0,
+                positionBreakpoints: Object.keys(layoutData)
               });
 
               // Get widget-type-specific default size instead of hardcoded 6×2
@@ -112,7 +148,7 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
               const constraints = WIDGET_SIZE_CONSTRAINTS[ws.widgetType];
               const [minWidth, minHeight] = constraints?.min || [defaultWidth, defaultHeight];
 
-              console.log(`[Initialize] Processing widget from DB:`, {
+              widgetLoadingLog(`[WIDGET_INIT] Dashboard: ?�� Processing widget from DB:`, {
                 widgetId: ws.widgetId,
                 type: ws.widgetType,
                 expectedDefault: `${defaultWidth}×${defaultHeight}`,
@@ -138,7 +174,7 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
                   h: height,
                 });
 
-                console.log(`[Initialize] Loaded responsive ${ws.widgetType} widget:`, {
+                widgetLoadingLog(`[WIDGET_INIT] Dashboard: ??Loaded responsive ${ws.widgetType} widget:`, {
                   widgetId: ws.widgetId,
                   dbSize: lgLayout.w && lgLayout.h ? `${lgLayout.w}×${lgLayout.h}` : 'missing',
                   finalSize: `${width}×${height}`,
@@ -158,7 +194,7 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
                   h: height,
                 });
 
-                console.log(`[Initialize] Loaded legacy ${ws.widgetType} widget:`, {
+                widgetLoadingLog(`[WIDGET_INIT] Dashboard: ??Loaded legacy ${ws.widgetType} widget:`, {
                   widgetId: ws.widgetId,
                   dbSize: layoutData.w && layoutData.h ? `${layoutData.w}×${layoutData.h}` : 'missing',
                   finalSize: `${width}×${height}`,
@@ -167,34 +203,66 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
                 });
               }
             });
-            
+
+            widgetLoadingLog(`[WIDGET_INIT] Dashboard: ?�� Page processing completed:`, {
+              pageId: pageState.pageId,
+              pageName: pageState.pageName,
+              totalWidgets: widgets.length,
+              totalLayouts: layouts.length,
+              widgetSummary: widgets.map(w => ({ id: w.i, type: w.type, hasPosition: !!w.position }))
+            });
+
             // Generate responsive layouts from the base layout
             const responsiveLayouts = layouts.length > 0 ? migrateLegacyLayout(layouts) : {};
 
-            pages.push({
+            const pageToAdd = {
               id: pageState.pageId,
               name: pageState.pageName,
               widgets,
               layouts, // Keep for legacy compatibility
               responsiveLayouts,
+            };
+
+            widgetLoadingLog(`[WIDGET_INIT] Dashboard: ?�� Adding page to pages array:`, {
+              pageId: pageToAdd.id,
+              widgetCount: pageToAdd.widgets.length,
+              layoutCount: pageToAdd.layouts.length
             });
+
+            pages.push(pageToAdd);
           }
           
-          // 초기 상태 해시 계산
+          // 초기 ?�태 ?�시 계산
           const initialHash = pages.length > 0 ? generateStateHash(pages[0].widgets, pages[0].layouts) : null;
+          widgetLoadingLog(`[WIDGET_INIT] Dashboard: ??Dashboard initialization completed successfully with ${pages.length} pages`);
+          widgetLoadingLog(`[WIDGET_INIT] Dashboard: Setting store state with ${pages[0]?.widgets?.length || 0} widgets in active page`);
+
+          // Final state before setting
+          widgetLoadingLog(`[WIDGET_INIT] Dashboard: ?�� Final state before store update:`, {
+            pagesCount: pages.length,
+            firstPageWidgets: pages[0]?.widgets?.length || 0,
+            firstPageLayouts: pages[0]?.layouts?.length || 0,
+            activePageIndex: 0,
+            isInitialized: true,
+            allPagesWithWidgets: pages.map(p => ({ id: p.id, widgetCount: p.widgets.length }))
+          });
+
           set({ pages, activePageIndex: 0, isInitialized: true, lastSavedHash: initialHash });
+
+          widgetLoadingLog(`[WIDGET_INIT] Dashboard: ?�� Store state updated successfully`);
         } else {
-          // 페이지가 없으면 기본 페이지 생성
+          // ?�이지가 ?�으�?기본 ?�이지 ?�성
+          widgetLoadingLog('[WIDGET_INIT] Dashboard: ?�� No pages found, creating default page');
           const initialHash = generateStateHash(defaultPage.widgets, defaultPage.layouts);
           set({ pages: [defaultPage], activePageIndex: 0, isInitialized: true, lastSavedHash: initialHash });
         }
         
       } catch (error) {
-        console.error("Failed to initialize dashboard from server", error);
-        
-        // 서버 데이터 로드 실패 시 기본 페이지로 초기화
-        // localStorage 백업은 사용하지 않아 데이터 일관성 보장
-        console.warn("Server data unavailable, initializing with default page");
+        widgetLoadingLog("[WIDGET_INIT] Dashboard: ??Failed to initialize dashboard from server", error);
+
+        // ?�버 ?�이??로드 ?�패 ??기본 ?�이지�?초기??
+        // localStorage 백업?� ?�용?��? ?�아 ?�이???��???보장
+        widgetLoadingLog("[WIDGET_INIT] Dashboard: ?�️ Server data unavailable, initializing with default page");
         const fallbackHash = generateStateHash(defaultPage.widgets, defaultPage.layouts);
         set({ pages: [defaultPage], activePageIndex: 0, isInitialized: true, lastSavedHash: fallbackHash });
       }
@@ -208,13 +276,13 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
       try {
         await createPage(userId, pageId, pageName);
         
-        // 서버 생성 성공 후 로컬 상태 업데이트
+        // ?�버 ?�성 ?�공 ??로컬 ?�태 ?�데?�트
         const newPage = createNewPage(pageName);
         newPage.id = pageId;
         
         set(state => ({
           pages: [...state.pages, newPage],
-          activePageIndex: state.pages.length // 새 페이지로 전환
+          activePageIndex: state.pages.length // ???�이지�??�환
         }));
       } catch (error) {
         console.error('Failed to create page:', error);
@@ -225,7 +293,7 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
       const userId = getUserId();
       const { pages, activePageIndex } = get();
       
-      // 마지막 페이지는 삭제할 수 없음
+      // 마�?�??�이지????��?????�음
       if (pages.length <= 1) {
         console.warn('Cannot delete the last page');
         return;
@@ -234,14 +302,14 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
       try {
         await deletePage(userId, pageId);
         
-        // 서버 삭제 성공 후 로컬 상태 업데이트
+        // ?�버 ??�� ?�공 ??로컬 ?�태 ?�데?�트
         const pageIndex = pages.findIndex(p => p.id === pageId);
         if (pageIndex === -1) return;
         
         const newPages = pages.filter(p => p.id !== pageId);
         let newActiveIndex = activePageIndex;
         
-        // 삭제된 페이지가 현재 활성 페이지이거나 그보다 앞에 있으면 인덱스 조정
+        // ??��???�이지가 ?�재 ?�성 ?�이지?�거??그보???�에 ?�으�??�덱??조정
         if (pageIndex <= activePageIndex && newActiveIndex > 0) {
           newActiveIndex = newActiveIndex - 1;
         }
@@ -257,7 +325,7 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
 
     setActivePageIndex: (index) => {
       set({ activePageIndex: index });
-      // 페이지 전환은 상태 저장할 필요 없음
+      // ?�이지 ?�환?� ?�태 ?�?�할 ?�요 ?�음
     },
     
     updatePageName: async (pageId: string, name: string) => {
@@ -266,7 +334,7 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
       try {
         await updatePageName(userId, pageId, name);
 
-        // 서버 업데이트 성공 후 로컬 상태 업데이트
+        // ?�버 ?�데?�트 ?�공 ??로컬 ?�태 ?�데?�트
         set(state => ({
           pages: state.pages.map(page =>
             page.id === pageId ? { ...page, name } : page
@@ -293,7 +361,7 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
         config: {},
       };
 
-      console.log(`[AddWidget] Adding widget: ${type}, ID: ${newWidget.i}`);
+      widgetOperationsLog(`[AddWidget] Adding widget: ${type}, ID: ${newWidget.i}`);
 
       set((state) => {
         const updatedPage = {
@@ -306,7 +374,7 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
         const newPages = [...state.pages];
         newPages[state.activePageIndex] = updatedPage;
 
-        console.log(`[AddWidget] Widget added: ${type}, total widgets: ${updatedPage.widgets.length}`);
+        widgetOperationsLog(`[AddWidget] Widget added: ${type}, total widgets: ${updatedPage.widgets.length}`);
 
         return { pages: newPages };
       });
@@ -336,7 +404,7 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
 
       try {
         await deleteWidget(userId, widgetId, activePage.id);
-        console.log(`Widget ${widgetId} deleted successfully`);
+        // Widget deleted successfully
       } catch (error) {
         console.error(`Failed to delete widget ${widgetId}:`, error);
         throw error;
@@ -344,13 +412,39 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
     },
 
     updateLayout: async (layouts) => {
-      // Layout updates are no longer persisted - using dynamic sizing only
-      console.log('[Store] Layout update ignored - using dynamic sizing only');
+      // Layout updated
+
+      set((state) => {
+        const activePage = state.pages[state.activePageIndex];
+        const updatedPage = {
+          ...activePage,
+          layouts: layouts,
+        };
+        const newPages = [...state.pages];
+        newPages[state.activePageIndex] = updatedPage;
+        return { pages: newPages };
+      });
+
+      // Save to database
+      get().actions.saveState();
     },
 
     updateResponsiveLayouts: async (responsiveLayouts: ResponsiveLayouts) => {
-      // Layout updates are no longer persisted - using dynamic sizing only
-      console.log('[Store] Layout update ignored - using dynamic sizing only');
+      // Responsive layouts updated
+
+      set((state) => {
+        const activePage = state.pages[state.activePageIndex];
+        const updatedPage = {
+          ...activePage,
+          responsiveLayouts: responsiveLayouts,
+        };
+        const newPages = [...state.pages];
+        newPages[state.activePageIndex] = updatedPage;
+        return { pages: newPages };
+      });
+
+      // Save to database
+      get().actions.saveState();
     },
     
     updateWidgetConfig: (widgetId, config) => {
@@ -371,64 +465,93 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
       get().actions.saveState();
     },
 
+    updateWidgetPosition: (widgetId, breakpoint, layoutItem) => {
+      // Update widget position - detailed logging removed for clarity
+
+      set((state) => {
+        const activePage = state.pages[state.activePageIndex];
+        const updatedPage = {
+          ...activePage,
+          widgets: activePage.widgets.map((widget) => {
+            if (widget.i === widgetId) {
+              const currentPosition = widget.position || {};
+              const updatedPosition = {
+                ...currentPosition,
+                [breakpoint]: layoutItem
+              };
+
+              // Widget position updated
+
+              return {
+                ...widget,
+                position: updatedPosition
+              };
+            }
+            return widget;
+          }),
+        };
+        const newPages = [...state.pages];
+        newPages[state.activePageIndex] = updatedPage;
+
+        return { pages: newPages };
+      });
+
+      // Save to database
+      get().actions.saveState();
+    },
+
     saveStateImmediate: async () => {
       const userId = getUserId();
       const { pages, activePageIndex } = get();
       const activePage = pages[activePageIndex];
 
       const widgetStates: WidgetState[] = activePage.widgets.map(widget => {
-        const layout = activePage.layouts.find(l => l.i === widget.i);
-        const responsiveLayouts = activePage.responsiveLayouts || {};
+        // Prioritize widget.position data, fallback to default size if needed
+        let layoutData;
 
-        // Create responsive layout data for this widget
-        const widgetResponsiveLayout: any = {};
-        Object.entries(responsiveLayouts).forEach(([breakpoint, layouts]) => {
-          const breakpointLayout = layouts?.find(l => l.i === widget.i);
-          if (breakpointLayout) {
-            widgetResponsiveLayout[breakpoint] = {
-              x: breakpointLayout.x,
-              y: breakpointLayout.y,
-              w: breakpointLayout.w,
-              h: breakpointLayout.h,
-            };
-          }
-        });
+        if (widget.position && Object.keys(widget.position).length > 0) {
+          // Use saved position data (highest priority)
+          layoutData = widget.position;
+          // Using saved position data
+        } else {
+          // Fall back to widget-type-specific default sizes
+          const [defaultWidth, defaultHeight] = getOptimalWidgetSize(widget.type, 'lg');
+          const layout = activePage.layouts.find(l => l.i === widget.i);
 
-        // If no responsive layouts exist, fall back to widget-type-specific sizes (CRITICAL FIX)
-        const [defaultWidth, defaultHeight] = getOptimalWidgetSize(widget.type, 'lg');
-        const layoutData = Object.keys(widgetResponsiveLayout).length > 0
-          ? widgetResponsiveLayout
-          : {
+          layoutData = {
+            lg: {
               x: layout?.x ?? 0,
               y: layout?.y ?? 0,
-              w: layout?.w ?? defaultWidth,  // Widget-specific width instead of hardcoded 6
-              h: layout?.h ?? defaultHeight, // Widget-specific height instead of hardcoded 2
-            };
-
-        console.log(`[SaveStateImmediate] Widget ${widget.i} (${widget.type}): using ${Object.keys(widgetResponsiveLayout).length > 0 ? 'responsive' : 'fallback'} layout, size: ${layoutData.w || defaultWidth}×${layoutData.h || defaultHeight}`);
+              w: layout?.w ?? defaultWidth,
+              h: layout?.h ?? defaultHeight,
+              i: widget.i
+            }
+          };
+          // Using default layout
+        }
 
         return {
           userId,
           pageId: activePage.id,
           widgetId: widget.i,
           widgetType: widget.type,
-          config: JSON.stringify(widget.config || {}),
-          layout: JSON.stringify(layoutData),
+          config: widget.config || {},
+          layout: layoutData,
         };
       });
       
       try {
         await saveWidgets(widgetStates);
-        console.log("[Dashboard] State saved to server successfully");
+        // State saved to server successfully
         
-        // 저장 성공 시 해시 업데이트
+        // ?�???�공 ???�시 ?�데?�트
         const currentHash = generateStateHash(activePage.widgets, activePage.layouts);
         set({ lastSavedHash: currentHash });
         
-        // localStorage 백업 제거 - 서버 데이터만 신뢰하여 일관성 보장
+        // localStorage 백업 ?�거 - ?�버 ?�이?�만 ?�뢰?�여 ?��???보장
         
       } catch (err) {
-        console.error("[Dashboard] Failed to save state to server:", err);
+        console.error("Failed to save state to server:", err);
         throw err;
       }
     },
@@ -438,30 +561,15 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
       const activePage = pages[activePageIndex];
       const userId = getUserId();
 
-      // 현재 상태 해시 계산
+      // Check if state changed
       const currentHash = generateStateHash(activePage.widgets, activePage.layouts);
-      
-      // 상태가 변경되지 않았으면 저장하지 않음
-      if (currentHash === lastSavedHash) {
-        console.log("[Dashboard] saveState: No changes detected, skipping save");
+      if (currentHash === lastSavedHash || isAutosaving) {
         return;
       }
-      
-      // 이미 자동 저장 중이면 건너뛰기
-      if (isAutosaving) {
-        console.log("[Dashboard] saveState: Already autosaving, skipping duplicate save");
-        return;
-      }
-      
-      console.log("[Dashboard] saveState: State changed, proceeding with save", {
-        widgetCount: activePage.widgets.length,
-        previousHash: lastSavedHash?.substring(0, 8),
-        currentHash: currentHash.substring(0, 8)
-      });
 
       set({ isAutosaving: true });
 
-      const widgetStates: WidgetState[] = activePage.widgets.map(widget => {
+      const widgetStates: WidgetState[] = activePage.widgets.map((widget, index) => {
         const layout = activePage.layouts.find(l => l.i === widget.i);
         const responsiveLayouts = activePage.responsiveLayouts || {};
 
@@ -479,43 +587,48 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
           }
         });
 
-        // If no responsive layouts exist, fall back to widget-type-specific sizes (CRITICAL FIX)
-        const [defaultWidth, defaultHeight] = getOptimalWidgetSize(widget.type, 'lg');
-        const layoutData = Object.keys(widgetResponsiveLayout).length > 0
-          ? widgetResponsiveLayout
-          : {
+        // Priority order: saved position data > responsive layouts > legacy layouts > default
+        let layoutData;
+
+        if (widget.position && Object.keys(widget.position).length > 0) {
+          layoutData = widget.position;
+        } else if (Object.keys(widgetResponsiveLayout).length > 0) {
+          layoutData = widgetResponsiveLayout;
+        } else {
+          const [defaultWidth, defaultHeight] = getOptimalWidgetSize(widget.type, 'lg');
+          layoutData = {
+            lg: {
               x: layout?.x ?? 0,
               y: layout?.y ?? 0,
-              w: layout?.w ?? defaultWidth,  // Widget-specific width instead of hardcoded 6
-              h: layout?.h ?? defaultHeight, // Widget-specific height instead of hardcoded 2
-            };
-
-        console.log(`[SaveState] Widget ${widget.i} (${widget.type}): using ${Object.keys(widgetResponsiveLayout).length > 0 ? 'responsive' : 'fallback'} layout, size: ${layoutData.w || defaultWidth}×${layoutData.h || defaultHeight}`);
+              w: layout?.w ?? defaultWidth,
+              h: layout?.h ?? defaultHeight,
+              i: widget.i
+            }
+          };
+        }
 
         return {
           userId,
           pageId: activePage.id,
           widgetId: widget.i,
           widgetType: widget.type,
-          config: JSON.stringify(widget.config || {}),
-          layout: JSON.stringify(layoutData),
+          config: widget.config || {},
+          layout: layoutData,
         };
       });
-      
+
       saveWidgets(widgetStates)
         .then(() => {
-          console.log("[Dashboard] saveState: Successfully saved state to server");
           set({ lastSavedHash: currentHash, isAutosaving: false });
         })
         .catch(err => {
-          console.error("[Dashboard] Failed to save state to server:", err);
+          console.error("Failed to save state to server:", err);
           set({ isAutosaving: false });
-          // localStorage 폴백 제거 - 서버 저장 실패 시 에러로 처리
         });
-    }, 1500), // 1.5초 디바운스
+    }, 1500), // 1.5�??�바?�스
 
     resetState: () => {
-      // 서버의 데이터도 삭제하는 로직이 필요할 수 있지만, 여기서는 프론트엔드 초기화만 진행
+      // ?�버???�이?�도 ??��?�는 로직???�요?????��?�? ?�기?�는 ?�론?�엔??초기?�만 진행
       set({ 
         pages: [defaultPage], 
         activePageIndex: 0, 
