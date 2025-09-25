@@ -7,7 +7,11 @@ import { useToast } from '../../contexts/ToastContext';
 import { ButtonSpinner, InlineLoader } from '../common/LoadingSpinner';
 import { killGPUProcess, suspendGPUProcess, resumeGPUProcess, setGPUProcessPriority } from '../../services/apiService';
 import { onConnectionStatusChange, getWebSocketStatus, flushGPUProcessBatch } from '../../services/websocketService';
-import { getGPUProcessConfigWithDefaults, GPU_PROCESS_PRESETS, type GPUProcessPresetType } from '../../utils/gpuProcessWidgetDefaults';
+import { GPU_PROCESS_PRESETS, type GPUProcessPresetType } from '../../utils/gpuProcessWidgetDefaults';
+import { formatProcessName, getRelativeTimeString, formatTime, getProcessTypeIcon, getGpuUsageClass, getMemoryUsageClass, getProcessTypeClass, getConnectionStatusClass, getProcessStatusWithPattern } from './gpu-process/processFormatters';
+import type { SortKey } from './gpu-process/processFiltering';
+import { useGpuProcessConfig } from './gpu-process/useGpuProcessConfig';
+import { useGpuProcessMetrics } from './gpu-process/useGpuProcessMetrics';
 import './widget.css';
 
 interface WidgetProps {
@@ -46,6 +50,37 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
   const { showProcessSuccess, showProcessError, showBulkProcessResult } = useToast();
   
   const gpuProcesses = useSystemResourceStore((state) => state.data.gpu_processes);
+  const [componentMountTime] = useState(Date.now());
+  const [previousProcesses, setPreviousProcesses] = useState<typeof gpuProcesses>([]);
+
+  const {
+    widget,
+    config,
+    processCount,
+    sortBy,
+    sortOrder,
+    filterEnabled,
+    usageThreshold,
+    memoryThreshold,
+    filterType,
+    showUpdateIndicators,
+    enableUpdateAnimations,
+  } = useGpuProcessConfig(widgetId);
+
+  const {
+    sortedProcesses,
+    filteredCount,
+    totalCount,
+  } = useGpuProcessMetrics(gpuProcesses, {
+    filterEnabled,
+    usageThreshold,
+    memoryThreshold,
+    filterType,
+    sortBy: sortBy as SortKey,
+    sortOrder,
+    processCount,
+  });
+
 
   // 초기 로드 상태 관리
   React.useEffect(() => {
@@ -68,7 +103,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
         return;
       }
 
-      const processes = getSortedProcesses();
+      const processes = sortedProcesses;
       if (processes.length === 0) return;
 
       let handled = false;
@@ -202,17 +237,17 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('mousedown', handleMouseDown);
     };
-  }, [focusedRowIndex, selectedProcesses, isSettingsOpen, widgetId]);
+  }, [focusedRowIndex, selectedProcesses, isSettingsOpen, widgetId, sortedProcesses]);
 
   // 포커스된 행이 변경될 때 해당 프로세스를 선택 (선택적)
   React.useEffect(() => {
     if (isKeyboardNavigation && focusedRowIndex >= 0) {
-      const processes = getSortedProcesses();
+      const processes = sortedProcesses;
       if (focusedRowIndex < processes.length) {
         // 스크린 리더를 위한 aria-live 업데이트는 여기서 처리
       }
     }
-  }, [focusedRowIndex, isKeyboardNavigation]);
+  }, [focusedRowIndex, isKeyboardNavigation, sortedProcesses]);
 
   // Widget size detection for dynamic item sizing
   useEffect(() => {
@@ -388,82 +423,6 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
     }
   };
 
-  const [componentMountTime] = useState(Date.now());
-  const [previousProcesses, setPreviousProcesses] = useState<typeof gpuProcesses>([]);
-
-  const widget = useDashboardStore((state) => {
-    const page = state.pages[state.activePageIndex];
-    return page?.widgets.find((w) => w.i === widgetId);
-  });
-  
-  // 기본값과 함께 병합된 설정 사용
-  const config = getGPUProcessConfigWithDefaults(widget?.config);
-  const processCount = config.gpuProcessCount || 5;
-  const sortBy = config.gpuSortBy || 'gpu_usage';
-  const sortOrder = config.gpuSortOrder || 'desc'; // 'asc' or 'desc'
-  const filterEnabled = config.gpuFilterEnabled || false;
-  const usageThreshold = config.gpuUsageThreshold || 25;
-  const memoryThreshold = config.gpuMemoryThreshold || 100; // MB
-  const filterType = config.gpuFilterType || 'or';
-  const showUpdateIndicators = config.gpuShowUpdateIndicators !== false; // default true
-  const enableUpdateAnimations = config.gpuEnableUpdateAnimations !== false; // default true
-
-  // 프로세스 필터링
-  const getFilteredProcesses = () => {
-    if (!filterEnabled) return gpuProcesses;
-
-    return gpuProcesses.filter(process => {
-      const meetsUsageThreshold = process.gpu_usage >= usageThreshold;
-      const meetsMemoryThreshold = process.gpu_memory >= memoryThreshold;
-
-      if (filterType === 'and') {
-        return meetsUsageThreshold && meetsMemoryThreshold;
-      } else {
-        return meetsUsageThreshold || meetsMemoryThreshold;
-      }
-    });
-  };
-
-  // 프로세스 정렬 및 제한
-  const getSortedProcesses = () => {
-    const filtered = getFilteredProcesses();
-    const sorted = [...filtered].sort((a, b) => {
-      let comparison = 0;
-      
-      switch (sortBy) {
-        case 'gpu_usage':
-          comparison = a.gpu_usage - b.gpu_usage;
-          break;
-        case 'gpu_memory':
-          comparison = a.gpu_memory - b.gpu_memory;
-          break;
-        case 'name':
-          comparison = a.name.localeCompare(b.name);
-          break;
-        case 'pid':
-          comparison = a.pid - b.pid;
-          break;
-        case 'type':
-          comparison = a.type.localeCompare(b.type);
-          break;
-        case 'status':
-          comparison = a.status.localeCompare(b.status);
-          break;
-        default:
-          comparison = 0;
-      }
-      
-      // 정렬 순서 적용
-      return sortOrder === 'asc' ? comparison : -comparison;
-    });
-    
-    return sorted.slice(0, processCount);
-  };
-
-  const sortedProcesses = getSortedProcesses();
-  const filteredCount = getFilteredProcesses().length;
-  const totalCount = gpuProcesses.length;
-
   const handleSettingsClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     setIsSettingsOpen(true);
@@ -519,7 +478,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
     } else {
       // 다른 컬럼 클릭시 해당 컬럼으로 정렬 변경
       actions.updateWidgetConfig(widgetId, { 
-        gpuSortBy: newSortBy,
+        gpuSortBy: newSortBy as SortKey,
         gpuSortOrder: 'desc' // 새 컬럼은 기본적으로 내림차순
       });
     }
@@ -764,210 +723,6 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
     
     return () => clearTimeout(cleanupTimer);
   }, [processUpdates]);
-
-  const formatProcessName = (name: string) => {
-    if (name.length > 20) {
-      return name.substring(0, 17) + '...';
-    }
-    return name;
-  };
-
-  const getRelativeTimeString = (timestamp: number) => {
-    const now = Date.now();
-    const diffMs = now - timestamp;
-    const diffSeconds = Math.floor(diffMs / 1000);
-    
-    if (diffSeconds < 5) return 'just now';
-    if (diffSeconds < 60) return `${diffSeconds}s ago`;
-    
-    const diffMinutes = Math.floor(diffSeconds / 60);
-    if (diffMinutes < 60) return `${diffMinutes}m ago`;
-    
-    const diffHours = Math.floor(diffMinutes / 60);
-    return `${diffHours}h ago`;
-  };
-
-  const formatTime = (timestamp: number) => {
-    return new Date(timestamp).toLocaleTimeString('en-US', {
-      hour12: false,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    });
-  };
-
-  const getProcessTypeIcon = (type: string, processName?: string) => {
-    const lowerType = type.toLowerCase();
-    const lowerName = processName?.toLowerCase() || '';
-    
-    // 프로세스 타입별 아이콘
-    switch (lowerType) {
-      case 'graphics':
-      case 'g':
-      case 'gfx':
-        // 게임/그래픽스 애플리케이션 세부 분류
-        if (lowerName.includes('game') || lowerName.includes('unreal') || lowerName.includes('unity') || 
-            lowerName.includes('steam') || lowerName.includes('origin') || lowerName.includes('epic') ||
-            lowerName.includes('minecraft') || lowerName.includes('wow') || lowerName.includes('csgo') ||
-            lowerName.includes('dota') || lowerName.includes('valorant') || lowerName.includes('lol')) {
-          return '🎮';
-        }
-        if (lowerName.includes('blender') || lowerName.includes('maya') || lowerName.includes('3dsmax') ||
-            lowerName.includes('cinema4d') || lowerName.includes('houdini')) {
-          return '🎨';
-        }
-        if (lowerName.includes('premiere') || lowerName.includes('aftereffects') || lowerName.includes('davinci') ||
-            lowerName.includes('ffmpeg') || lowerName.includes('handbrake') || lowerName.includes('obs')) {
-          return '🎬';
-        }
-        if (lowerName.includes('photoshop') || lowerName.includes('illustrator') || lowerName.includes('gimp') ||
-            lowerName.includes('krita') || lowerName.includes('designer')) {
-          return '🖼️';
-        }
-        return '📺'; // 일반 그래픽스
-        
-      case 'compute':
-      case 'c':
-      case 'cuda':
-        // AI/ML/컴퓨팅 애플리케이션 세부 분류
-        if (lowerName.includes('python') || lowerName.includes('jupyter') || lowerName.includes('conda') ||
-            lowerName.includes('tensorflow') || lowerName.includes('pytorch') || lowerName.includes('keras') ||
-            lowerName.includes('nvidia-ml') || lowerName.includes('triton')) {
-          return '🤖';
-        }
-        if (lowerName.includes('blender') || lowerName.includes('cycles') || lowerName.includes('optix')) {
-          return '🎨';
-        }
-        if (lowerName.includes('mining') || lowerName.includes('miner') || lowerName.includes('eth') ||
-            lowerName.includes('bitcoin') || lowerName.includes('crypto')) {
-          return '⛏️';
-        }
-        if (lowerName.includes('folding') || lowerName.includes('boinc') || lowerName.includes('seti')) {
-          return '🧬';
-        }
-        if (lowerName.includes('password') || lowerName.includes('hashcat') || lowerName.includes('john')) {
-          return '🔐';
-        }
-        return '🧮'; // 일반 컴퓨팅
-        
-      case 'mixed':
-      case 'multi':
-        return '🔀'; // 혼합 타입
-        
-      case 'copy':
-      case 'dma':
-        return '📋'; // 메모리 복사
-        
-      case 'encode':
-      case 'decoder':
-      case 'nvenc':
-      case 'nvdec':
-        return '🎞️'; // 인코딩/디코딩
-        
-      case 'display':
-      case 'overlay':
-        return '🖥️'; // 디스플레이
-        
-      default:
-        // 프로세스 이름 기반 추론
-        if (lowerName.includes('chrome') || lowerName.includes('firefox') || lowerName.includes('edge') ||
-            lowerName.includes('browser') || lowerName.includes('webkit')) {
-          return '🌐';
-        }
-        if (lowerName.includes('discord') || lowerName.includes('teams') || lowerName.includes('zoom') ||
-            lowerName.includes('skype') || lowerName.includes('slack')) {
-          return '💬';
-        }
-        if (lowerName.includes('vlc') || lowerName.includes('media') || lowerName.includes('player') ||
-            lowerName.includes('spotify') || lowerName.includes('youtube')) {
-          return '🎵';
-        }
-        if (lowerName.includes('nvidia') || lowerName.includes('radeon') || lowerName.includes('intel') ||
-            lowerName.includes('driver') || lowerName.includes('service')) {
-          return '⚙️';
-        }
-        if (lowerName.includes('dwm') || lowerName.includes('compositor') || lowerName.includes('x11') ||
-            lowerName.includes('wayland')) {
-          return '🪟';
-        }
-        return '🔧'; // 기타/알 수 없음
-    }
-  };
-
-  const getProcessStatusClass = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'running':
-      case 'active':
-        return 'gpu-process-running';
-      case 'idle':
-      case 'waiting':
-        return 'gpu-process-idle';
-      case 'suspended':
-      case 'paused':
-        return 'gpu-process-suspended';
-      case 'blocked':
-      case 'stopped':
-        return 'gpu-process-blocked';
-      default:
-        return 'gpu-process-unknown';
-    }
-  };
-
-  const getGpuUsageClass = (gpuUsage: number) => {
-    if (gpuUsage >= 90) return 'gpu-usage-critical';
-    if (gpuUsage >= 70) return 'gpu-usage-high';
-    if (gpuUsage >= 30) return 'gpu-usage-medium';
-    return 'gpu-usage-low';
-  };
-
-  const getMemoryUsageClass = (memoryUsage: number) => {
-    if (memoryUsage >= 4096) return 'memory-usage-critical'; // 4GB+
-    if (memoryUsage >= 2048) return 'memory-usage-high';     // 2GB+
-    if (memoryUsage >= 512) return 'memory-usage-medium';    // 512MB+
-    return 'memory-usage-low';
-  };
-
-  const getProcessTypeClass = (type: string) => {
-    switch (type.toLowerCase()) {
-      case 'compute':
-      case 'c':
-        return 'process-type-compute';
-      case 'graphics':
-      case 'g':
-      case 'gfx':
-        return 'process-type-graphics';
-      case 'media':
-      case 'm':
-        return 'process-type-media';
-      case 'system':
-      case 's':
-        return 'process-type-system';
-      default:
-        return 'process-type-unknown';
-    }
-  };
-
-  const getConnectionStatusClass = (isConnected: boolean) => {
-    return isConnected ? 'connection-status-connected' : 'connection-status-disconnected';
-  };
-
-  const getProcessStatusWithPattern = (status: string) => {
-    const baseClass = getProcessStatusClass(status);
-    switch (status.toLowerCase()) {
-      case 'running':
-      case 'active':
-        return `${baseClass} process-status-running`;
-      case 'idle':
-      case 'waiting':
-        return `${baseClass} process-status-idle`;
-      case 'suspended':
-      case 'paused':
-        return `${baseClass} process-status-suspended`;
-      default:
-        return baseClass;
-    }
-  };
-
 
   // 프로세스 제어 핸들러들
   const handleKillSelected = async () => {
@@ -2306,7 +2061,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                 value={sortBy}
                 onChange={(e) => {
                   const { actions } = useDashboardStore.getState();
-                  actions.updateWidgetConfig(widgetId, { gpuSortBy: e.target.value as typeof sortBy });
+                  actions.updateWidgetConfig(widgetId, { gpuSortBy: e.target.value as SortKey });
                 }}
               >
                 <option value="gpu_usage">GPU Usage</option>
