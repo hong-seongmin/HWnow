@@ -40,7 +40,7 @@ type Config struct {
 	} `json:"monitoring"`
 	UI struct {
 		AutoOpenBrowser bool   `json:"auto_open_browser"`
-		Theme          string `json:"theme"`
+		Theme           string `json:"theme"`
 	} `json:"ui"`
 }
 
@@ -74,10 +74,10 @@ func getDefaultConfig() Config {
 		},
 		UI: struct {
 			AutoOpenBrowser bool   `json:"auto_open_browser"`
-			Theme          string `json:"theme"`
+			Theme           string `json:"theme"`
 		}{
 			AutoOpenBrowser: false,
-			Theme:          "system",
+			Theme:           "system",
 		},
 	}
 }
@@ -85,7 +85,7 @@ func getDefaultConfig() Config {
 // Load or create configuration file
 func loadConfig() Config {
 	configPath := "config.json"
-	
+
 	// Check if config file exists
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		// Create default config file
@@ -95,31 +95,31 @@ func loadConfig() Config {
 			log.Printf("Error marshaling default config: %v", err)
 			return defaultConfig
 		}
-		
+
 		err = os.WriteFile(configPath, configData, 0644)
 		if err != nil {
 			log.Printf("Error creating config file: %v", err)
 			return defaultConfig
 		}
-		
+
 		log.Printf("Created default config file: %s", configPath)
 		return defaultConfig
 	}
-	
+
 	// Load existing config file
 	configData, err := os.ReadFile(configPath)
 	if err != nil {
 		log.Printf("Error reading config file: %v", err)
 		return getDefaultConfig()
 	}
-	
+
 	var config Config
 	err = json.Unmarshal(configData, &config)
 	if err != nil {
 		log.Printf("Error parsing config file: %v", err)
 		return getDefaultConfig()
 	}
-	
+
 	log.Printf("Loaded configuration from: %s", configPath)
 	return config
 }
@@ -127,10 +127,10 @@ func loadConfig() Config {
 func main() {
 	// Load configuration
 	config := loadConfig()
-	
+
 	// --- Database Initialization ---
 	// 실행 파일과 같은 위치에 데이터베이스 저장
-	dbPath := "."  // 현재 디렉터리 (실행 파일 위치)
+	dbPath := "." // 현재 디렉터리 (실행 파일 위치)
 	dbFile := config.Database.Filename
 	dataSourceName, err := db.EnsureDB(dbPath, dbFile)
 	if err != nil {
@@ -150,15 +150,17 @@ func main() {
 	// 채널 생성
 	wsChan := make(chan *monitoring.ResourceSnapshot)
 	dbChan := make(chan *monitoring.ResourceSnapshot)
+	_ = wsChan
+	_ = dbChan
 
 	// CPU 최적화 Phase 5.1: 백그라운드 고루틴 완전 비활성화
 	// 허브 및 모니터링 시작 - 비활성화됨
 	// go hub.Run(wsChan)                           // CPU 소모 방지: WebSocket Hub 비활성화
 	// go monitoring.Start(wsChan, dbChan)          // CPU 소모 방지: 2초마다 모니터링 비활성화
-	
-	// DB로 데이터 전송 - 비활성화됨  
+
+	// DB로 데이터 전송 - 비활성화됨
 	// go db.BatchInsertResourceLogs(dbChan, database)  // CPU 소모 방지: 배치 삽입 고루틴 비활성화
-	
+
 	log.Println("CPU 최적화: 모든 백그라운드 모니터링 프로세스 비활성화됨")
 
 	// --- HTTP Server Setup ---
@@ -198,10 +200,10 @@ func setupFrontendRoutes(r *mux.Router) {
 
 	// 정적 파일 핸들러 설정
 	fileServer := http.FileServer(http.FS(distFS))
-	
+
 	// 정적 파일들 (CSS, JS, 이미지 등) 처리
 	r.PathPrefix("/assets/").Handler(fileServer)
-	
+
 	// 파비콘과 기타 정적 파일들
 	r.HandleFunc("/vite.svg", func(w http.ResponseWriter, r *http.Request) {
 		serveEmbeddedFile(w, r, distFS, "vite.svg")
@@ -209,27 +211,27 @@ func setupFrontendRoutes(r *mux.Router) {
 	r.HandleFunc("/HWnow.png", func(w http.ResponseWriter, r *http.Request) {
 		serveEmbeddedFile(w, r, distFS, "HWnow.png")
 	})
-	
+
 	// 메인 인덱스 페이지 및 SPA 라우팅
 	r.PathPrefix("/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/")
-		
+
 		// 루트 경로이거나 파일 확장자가 없는 경우 (SPA 라우팅)
 		if path == "" || !strings.Contains(path, ".") {
 			serveEmbeddedFile(w, r, distFS, "index.html")
 			return
 		}
-		
+
 		// 실제 파일이 존재하는지 확인
 		if _, err := fs.Stat(distFS, path); err == nil {
 			serveEmbeddedFile(w, r, distFS, path)
 			return
 		}
-		
+
 		// 파일이 없으면 index.html로 폴백 (SPA)
 		serveEmbeddedFile(w, r, distFS, "index.html")
 	})
-	
+
 	log.Println("Embedded frontend files successfully configured")
 }
 
@@ -241,14 +243,14 @@ func serveEmbeddedFile(w http.ResponseWriter, r *http.Request, fsys fs.FS, path 
 		return
 	}
 	defer file.Close()
-	
+
 	// 파일 정보 가져오기
 	stat, err := file.Stat()
 	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	
+
 	// Content-Type 설정
 	if strings.HasSuffix(path, ".html") {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -261,7 +263,7 @@ func serveEmbeddedFile(w http.ResponseWriter, r *http.Request, fsys fs.FS, path 
 	} else if strings.HasSuffix(path, ".svg") {
 		w.Header().Set("Content-Type", "image/svg+xml")
 	}
-	
+
 	// 파일 서빙
 	http.ServeContent(w, r, path, stat.ModTime(), file.(io.ReadSeeker))
 }

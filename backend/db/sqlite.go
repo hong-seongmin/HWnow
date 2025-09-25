@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 // EnsureDB는 데이터베이스 파일과 디렉토리가 존재하는지 확인하고,
@@ -70,13 +69,13 @@ func InitDB(dataSourceName string) (*sql.DB, error) {
 	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
 		log.Printf("Warning: Could not add page_id column: %v", err)
 	}
-	
+
 	_, err = db.Exec("ALTER TABLE widget_states ADD COLUMN config TEXT")
 	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
 		log.Printf("Warning: Could not add config column: %v", err)
 	}
-	
-	_, err = db.Exec("ALTER TABLE widget_states ADD COLUMN layout TEXT") 
+
+	_, err = db.Exec("ALTER TABLE widget_states ADD COLUMN layout TEXT")
 	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
 		log.Printf("Warning: Could not add layout column: %v", err)
 	}
@@ -252,64 +251,64 @@ func BatchInsertResourceLogs(snapshots <-chan *monitoring.ResourceSnapshot, db *
 	// CPU 소모를 방지하기 위해 배치 삽입 무한 루프 비활성화
 	log.Println("CPU 최적화: 배치 DB 삽입 시스템 완전 비활성화됨 (1초 ticker 제거)")
 	return
-	
+
 	// 비활성화된 원본 코드 (CPU 소모 방지)
 	/*
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
 
-	buffer := make([]*monitoring.ResourceSnapshot, 0, 10)
+		buffer := make([]*monitoring.ResourceSnapshot, 0, 10)
 
-	for {
-		select {
-		case snapshot := <-snapshots:
-			if snapshot == nil {
-				return // 채널이 닫히면 고루틴 종료
-			}
-			buffer = append(buffer, snapshot)
-		case <-ticker.C:
-			if len(buffer) == 0 {
-				continue
-			}
+		for {
+			select {
+			case snapshot := <-snapshots:
+				if snapshot == nil {
+					return // 채널이 닫히면 고루틴 종료
+				}
+				buffer = append(buffer, snapshot)
+			case <-ticker.C:
+				if len(buffer) == 0 {
+					continue
+				}
 
-			tx, err := db.Begin()
-			if err != nil {
-				log.Printf("Failed to begin transaction for logs: %v", err)
-				continue
-			}
+				tx, err := db.Begin()
+				if err != nil {
+					log.Printf("Failed to begin transaction for logs: %v", err)
+					continue
+				}
 
-			stmt, err := tx.Prepare("INSERT INTO resource_logs (timestamp, metric_type, value) VALUES (?, ?, ?)")
-			if err != nil {
-				log.Printf("Failed to prepare statement for logs: %v", err)
-				tx.Rollback()
-				continue
-			}
+				stmt, err := tx.Prepare("INSERT INTO resource_logs (timestamp, metric_type, value) VALUES (?, ?, ?)")
+				if err != nil {
+					log.Printf("Failed to prepare statement for logs: %v", err)
+					tx.Rollback()
+					continue
+				}
 
-			var failed bool
-			for _, snapshot := range buffer {
-				for _, metric := range snapshot.Metrics {
-					if _, err := stmt.Exec(snapshot.Timestamp, metric.Type, metric.Value); err != nil {
-						log.Printf("Failed to execute statement for logs: %v", err)
-						failed = true
+				var failed bool
+				for _, snapshot := range buffer {
+					for _, metric := range snapshot.Metrics {
+						if _, err := stmt.Exec(snapshot.Timestamp, metric.Type, metric.Value); err != nil {
+							log.Printf("Failed to execute statement for logs: %v", err)
+							failed = true
+							break
+						}
+					}
+					if failed {
 						break
 					}
 				}
+
 				if failed {
-					break
+					tx.Rollback()
+				} else {
+					if err := tx.Commit(); err != nil {
+						log.Printf("Failed to commit transaction for logs: %v", err)
+					}
 				}
-			}
 
-			if failed {
-				tx.Rollback()
-			} else {
-				if err := tx.Commit(); err != nil {
-					log.Printf("Failed to commit transaction for logs: %v", err)
-				}
+				// 버퍼 비우기
+				buffer = buffer[:0]
 			}
-
-			// 버퍼 비우기
-			buffer = buffer[:0]
 		}
-	}
 	*/
 }
