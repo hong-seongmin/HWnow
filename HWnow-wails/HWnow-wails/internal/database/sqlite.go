@@ -124,34 +124,48 @@ type Page struct {
 }
 
 func GetWidgets(db *sql.DB, userID, pageID string) ([]WidgetState, error) {
-	log.Printf("[DB] GetWidgets: Loading widgets for user=%s, page=%s", userID, pageID)
-	
+	monitoring.LogWidgetInfo("GetWidgets: Starting widget load", "user", userID, "page", pageID)
+
 	query := "SELECT page_id, widget_id, widget_type, config, layout FROM widget_states WHERE user_id = ? AND page_id = ?"
+	monitoring.LogWidgetDebug("GetWidgets: Executing query", "query", query, "user", userID, "page", pageID)
+
 	rows, err := db.Query(query, userID, pageID)
 	if err != nil {
-		log.Printf("[DB] GetWidgets: Query failed for user=%s, page=%s, error=%v", userID, pageID, err)
+		monitoring.LogWidgetError("GetWidgets: Query failed", "user", userID, "page", pageID, "error", err)
 		return nil, err
 	}
 	defer rows.Close()
 
 	var widgets []WidgetState
+	widgetCount := 0
 	for rows.Next() {
+		widgetCount++
 		var w WidgetState
 		w.UserID = userID
 		var config, layout sql.NullString
 		var pageID sql.NullString
 		if err := rows.Scan(&pageID, &w.WidgetID, &w.WidgetType, &config, &layout); err != nil {
-			log.Printf("[DB] GetWidgets: Failed to scan widget row: %v", err)
+			monitoring.LogWidgetError("GetWidgets: Failed to scan widget row", "row", widgetCount, "error", err)
 			return nil, err
 		}
 		w.PageID = pageID.String
 		w.Config = config.String
 		w.Layout = layout.String
 		widgets = append(widgets, w)
-		log.Printf("[DB] GetWidgets: Loaded widget id=%s, type=%s", w.WidgetID, w.WidgetType)
+		monitoring.LogWidgetInfo("GetWidgets: Loaded widget", "index", widgetCount, "id", w.WidgetID, "type", w.WidgetType, "hasConfig", len(w.Config) > 0, "hasLayout", len(w.Layout) > 0)
+
+		if len(w.Layout) > 0 {
+			monitoring.LogWidgetDebug("GetWidgets: Widget layout preview", "id", w.WidgetID, "layout", func() string {
+				if len(w.Layout) > 100 {
+					return w.Layout[:100] + "..."
+				}
+				return w.Layout
+			}())
+		}
 	}
-	
-	log.Printf("[DB] GetWidgets: Successfully loaded %d widgets for page %s", len(widgets), pageID)
+
+	monitoring.LogWidgetInfo("GetWidgets: Successfully loaded widgets", "count", len(widgets), "page", pageID)
+	monitoring.LogWidgetInfo("GetWidgets: Widgets will be sent to frontend for processing")
 	return widgets, nil
 }
 
@@ -163,8 +177,11 @@ func SaveWidgets(db *sql.DB, widgets []WidgetState) error {
 	// 첫 번째 위젯에서 user_id와 page_id 추출 (모든 위젯이 같은 페이지에 속함)
 	userID := widgets[0].UserID
 	pageID := widgets[0].PageID
-	
-	log.Printf("[DB] SaveWidgets: Replacing all widgets for user=%s, page=%s with %d new widgets", userID, pageID, len(widgets))
+
+	monitoring.LogWidgetInfo("SaveWidgets: Starting widget save", "user", userID, "page", pageID, "count", len(widgets))
+	for i, w := range widgets {
+		monitoring.LogWidgetDebug("SaveWidgets: Widget details", "index", i+1, "id", w.WidgetID, "type", w.WidgetType, "hasConfig", len(w.Config) > 0, "hasLayout", len(w.Layout) > 0)
+	}
 
 	tx, err := db.Begin()
 	if err != nil {
@@ -214,7 +231,8 @@ func SaveWidgets(db *sql.DB, widgets []WidgetState) error {
 		return err
 	}
 	
-	log.Printf("[DB] SaveWidgets: Successfully saved %d widgets for page %s", len(widgets), pageID)
+	monitoring.LogWidgetInfo("SaveWidgets: Successfully saved widgets", "count", len(widgets), "page", pageID)
+	monitoring.LogWidgetInfo("SaveWidgets: Widgets are now persisted in database")
 	return nil
 }
 

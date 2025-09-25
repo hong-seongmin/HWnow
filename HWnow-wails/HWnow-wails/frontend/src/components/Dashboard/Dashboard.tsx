@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Responsive, WidthProvider } from 'react-grid-layout';
 import type { Layout, Layouts } from 'react-grid-layout';
+import { LogInfo, LogDebug } from '../../../wailsjs/runtime/runtime';
 import { useDashboardStore } from '../../stores/dashboardStore';
 import { useHistoryStore } from '../../stores/historyStore';
 import { RemoveWidgetCommand, UpdateLayoutCommand } from '../../stores/commands';
@@ -32,19 +33,16 @@ import {
   BREAKPOINT_CONFIGS
 } from '../../utils/layoutUtils';
 import { WIDGET_SIZE_CONSTRAINTS, getOptimalWidgetSize } from '../../utils/widgetSizeDefinitions';
+import { widgetLoadingLog, layoutChangesLog } from '../../utils/debugConfig';
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
 
 // Get widget-specific constraints helper function
 const getWidgetConstraints = (widgetId: string, widgets: any[], breakpoint: Breakpoint) => {
-  console.log(`[Dashboard] Getting constraints for widget ${widgetId}, available widgets:`, widgets.map(w => `${w.i}:${w.type}`));
-
   const widget = widgets.find(w => w.i === widgetId);
-  console.log(`[Dashboard] Found widget:`, widget);
 
   if (widget && widget.type) {
     const constraints = WIDGET_SIZE_CONSTRAINTS[widget.type as WidgetType];
-    console.log(`[Dashboard] WIDGET_SIZE_CONSTRAINTS for ${widget.type}:`, constraints);
 
     if (constraints) {
       const config = BREAKPOINT_CONFIGS[breakpoint];
@@ -55,18 +53,12 @@ const getWidgetConstraints = (widgetId: string, widgets: any[], breakpoint: Brea
         maxH: constraints.max[1]
       };
 
-      console.log(`[Dashboard] Applied constraints for ${widget.type} widget ${widgetId}:`, result);
       return result;
-    } else {
-      console.log(`[Dashboard] No constraints found for widget type: ${widget.type}`);
     }
-  } else {
-    console.log(`[Dashboard] Widget not found or no type: widgetId=${widgetId}, widget=`, widget);
   }
 
   // Fallback to improved defaults (TDD Green Phase)
   const config = BREAKPOINT_CONFIGS[breakpoint];
-  console.log(`[Dashboard] Using fallback constraints for widget ${widgetId} (widget not found or no type)`);
 
   return {
     minW: Math.min(6, config.cols),  // Improved from 3 to 6
@@ -107,19 +99,33 @@ const widgetMap: { [key in WidgetType]: React.ComponentType<{ widgetId: string; 
 };
 
 const Dashboard = () => {
+  // Add frontend initialization logging - only log on key state changes
   const { pages, activePageIndex, isInitialized, actions } = useDashboardStore();
   const { actions: historyActions } = useHistoryStore();
   const { showSuccess, showError } = useToast();
 
+  // Log only important state changes
+  widgetLoadingLog(`[FRONTEND] Dashboard state - pages: ${pages.length}, activePageIndex: ${activePageIndex}, isInitialized: ${isInitialized}`);
+
   const activePage = pages[activePageIndex];
   const widgets = activePage?.widgets || [];
+
+  // Enhanced widget state logging
+  widgetLoadingLog('[FRONTEND] Dashboard render state:', {
+    activePage: activePage ? { id: activePage.id, name: activePage.name } : null,
+    widgetCount: widgets.length,
+    widgets: widgets.map(w => ({ id: w.i, type: w.type })),
+    isInitialized
+  });
 
   // Current breakpoint state
   const [currentBreakpoint, setCurrentBreakpoint] = useState<Breakpoint>(getCurrentBreakpoint());
 
   // Generate layouts preserving existing widget positions and finding empty spots for new widgets
   const getDynamicLayouts = useCallback((): Layouts => {
-    if (!activePage || !activePage.widgets) return {};
+    if (!activePage || !activePage.widgets) {
+      return {};
+    }
 
     const layouts: Layouts = {};
     const breakpoints: Breakpoint[] = ['lg', 'md', 'sm', 'xs', 'xxs'];
@@ -130,14 +136,25 @@ const Dashboard = () => {
       const occupiedSpaces: Set<string> = new Set();
 
       // First pass: place widgets that have saved positions
-      activePage.widgets.forEach(widget => {
-        if (widget.position?.[breakpoint]?.[0]) {
-          const savedLayout = widget.position[breakpoint][0];
-          widgetLayouts.push(savedLayout);
+      activePage.widgets.forEach((widget, index) => {
+        if (widget.position?.[breakpoint]) {
+          const savedLayout = widget.position[breakpoint];
+
+          // Validate saved layout before using it
+          const validatedLayout = {
+            ...savedLayout,
+            i: widget.i, // Ensure widget ID is set
+            x: Math.max(0, Math.min(config.cols - savedLayout.w, savedLayout.x)),
+            y: Math.max(0, savedLayout.y),
+            w: Math.max(1, Math.min(config.cols, savedLayout.w)),
+            h: Math.max(1, savedLayout.h)
+          };
+
+          widgetLayouts.push(validatedLayout);
 
           // Mark occupied spaces
-          for (let x = savedLayout.x; x < savedLayout.x + savedLayout.w; x++) {
-            for (let y = savedLayout.y; y < savedLayout.y + savedLayout.h; y++) {
+          for (let x = validatedLayout.x; x < validatedLayout.x + validatedLayout.w; x++) {
+            for (let y = validatedLayout.y; y < validatedLayout.y + validatedLayout.h; y++) {
               occupiedSpaces.add(`${x},${y}`);
             }
           }
@@ -145,8 +162,9 @@ const Dashboard = () => {
       });
 
       // Second pass: place widgets without saved positions in empty spots
-      activePage.widgets.forEach(widget => {
-        if (!widget.position?.[breakpoint]?.[0]) {
+      activePage.widgets.forEach((widget, index) => {
+        if (!widget.position?.[breakpoint]) {
+
           const [optimalWidth, optimalHeight] = getOptimalWidgetSize(widget.type, breakpoint);
 
           // Find empty spot
@@ -188,10 +206,29 @@ const Dashboard = () => {
               }
             }
           }
+
+          if (!placed) {
+            // Fallback: place at bottom if no space found
+            const bottomY = Math.max(...widgetLayouts.map(l => l.y + l.h), 0);
+            const fallbackLayout: Layout = {
+              i: widget.i,
+              x: 0,
+              y: bottomY,
+              w: optimalWidth,
+              h: optimalHeight,
+              minW: optimalWidth,
+              maxW: optimalWidth,
+              minH: optimalHeight,
+              maxH: optimalHeight
+            };
+            widgetLoadingLog(`[Dashboard] Fallback placement for widget ${widget.i}:`, fallbackLayout);
+            widgetLayouts.push(fallbackLayout);
+          }
         }
       });
 
       layouts[breakpoint] = widgetLayouts;
+      widgetLoadingLog(`[Dashboard] Generated ${widgetLayouts.length} layouts for ${breakpoint}`);
     });
 
     return layouts;
@@ -252,8 +289,21 @@ const Dashboard = () => {
   const [bottomPadding, setBottomPadding] = useState(500); // 기본 500px
 
   useEffect(() => {
+    widgetLoadingLog('[FRONTEND_INIT] Dashboard useEffect triggered', {
+      isInitialized,
+      hasActions: !!actions.initialize,
+      timestamp: new Date().toISOString()
+    });
+
     if (!isInitialized) {
-      actions.initialize();
+      widgetLoadingLog('[FRONTEND_INIT] Dashboard: Starting initialize...');
+      actions.initialize().then(() => {
+        widgetLoadingLog('[FRONTEND_INIT] Dashboard: Initialize completed successfully');
+      }).catch((error) => {
+        widgetLoadingLog('[FRONTEND_INIT] Dashboard: Initialize failed', error);
+      });
+    } else {
+      widgetLoadingLog('[FRONTEND_INIT] Dashboard: Already initialized, skipping');
     }
   }, [isInitialized, actions]);
 
@@ -266,32 +316,16 @@ const Dashboard = () => {
         height: window.innerHeight
       };
 
-      console.log('[Dashboard] Window resize detected:', {
-        windowSize,
-        oldBreakpoint: currentBreakpoint,
-        newBreakpoint: newBreakpoint,
-        willTriggerChange: newBreakpoint !== currentBreakpoint
-      });
-
       if (newBreakpoint !== currentBreakpoint) {
-        console.log(`[Dashboard] *** BREAKPOINT CHANGE TRIGGERED *** ${currentBreakpoint} → ${newBreakpoint}`);
-        console.log('[Dashboard] Active widgets before breakpoint change:', widgets?.map(w => `${w.i}:${w.type}`) || []);
+        layoutChangesLog(`[Dashboard] *** BREAKPOINT CHANGE TRIGGERED *** ${currentBreakpoint} → ${newBreakpoint}`);
         setCurrentBreakpoint(newBreakpoint);
       }
     }, 250);
 
     window.addEventListener('resize', handleResize);
 
-    // Log initial window state
-    console.log('[Dashboard] Window resize listener initialized:', {
-      currentSize: { width: window.innerWidth, height: window.innerHeight },
-      currentBreakpoint,
-      widgets: widgets?.length || 0
-    });
-
     return () => {
       window.removeEventListener('resize', handleResize);
-      console.log('[Dashboard] Window resize listener removed');
     };
   }, [currentBreakpoint, widgets]);
 
@@ -301,11 +335,9 @@ const Dashboard = () => {
     
     if (widgets && widgets.length > 0) {
       const activeWidgetTypes: WidgetType[] = widgets.map(w => w.type);
-      console.log('[Dashboard] Active widgets changed:', activeWidgetTypes);
       eventService.updateActiveWidgets(activeWidgetTypes);
     } else {
       // No widgets - stop all unnecessary polling
-      console.log('[Dashboard] No widgets active, optimizing polling');
       eventService.updateActiveWidgets([]);
     }
   }, [widgets]);
@@ -368,42 +400,78 @@ const Dashboard = () => {
 
   const handleLayoutChange = async (currentLayout: Layout[], layouts: Layouts) => {
     // Save widget positions when user manually moves or resizes widgets
-    console.log('[Dashboard] Layout change detected - saving widget positions');
+    layoutChangesLog('[Dashboard] === LAYOUT CHANGE EVENT START ===');
+    layoutChangesLog('[Dashboard] Layout change detected - saving widget positions');
+    LogInfo(`[FRONTEND] === LAYOUT CHANGE EVENT START ===`);
+    LogInfo(`[FRONTEND] Layout change detected - saving widget positions (${currentLayout.length} widgets)`);
+    LogInfo(`[FRONTEND] Current breakpoint: ${currentBreakpoint}`);
+    LogInfo(`[FRONTEND] Active page ID: ${activePage?.id}`);
 
-    if (!activePage || !currentLayout || currentLayout.length === 0) return;
+    // Log detailed layout information
+    layoutChangesLog('[Dashboard] Current layout details:', {
+      layoutCount: currentLayout?.length || 0,
+      breakpoint: currentBreakpoint,
+      pageId: activePage?.id,
+      widgets: currentLayout?.map(l => ({ id: l.i, x: l.x, y: l.y, w: l.w, h: l.h })) || []
+    });
+
+    // Log all available layouts for debugging
+    layoutChangesLog('[Dashboard] All responsive layouts received:', {
+      availableBreakpoints: Object.keys(layouts || {}),
+      currentBreakpointLayouts: layouts?.[currentBreakpoint]?.length || 0
+    });
+
+    if (!activePage || !currentLayout || currentLayout.length === 0) {
+      layoutChangesLog('[Dashboard] Layout change SKIPPED - validation failed:', {
+        hasActivePage: !!activePage,
+        hasCurrentLayout: !!currentLayout,
+        layoutLength: currentLayout?.length || 0
+      });
+      LogInfo('[FRONTEND] Layout change skipped - no active page or empty layout');
+      return;
+    }
 
     try {
-      // Update widget positions in store
-      const updatedWidgets = activePage.widgets.map(widget => {
-        const layoutItem = currentLayout.find(item => item.i === widget.i);
-        if (layoutItem) {
-          const updatedPosition = {
-            ...widget.position,
-            [currentBreakpoint]: [layoutItem]
-          };
-          return {
-            ...widget,
-            position: updatedPosition
-          };
+      layoutChangesLog('[Dashboard] Starting widget position updates...');
+      LogInfo(`[FRONTEND] Starting widget position updates for ${currentLayout.length} widgets`);
+
+      // Update each widget position directly using the new action
+      const updatePromises = currentLayout.map(async (layoutItem, index) => {
+        layoutChangesLog(`[Dashboard] [${index + 1}/${currentLayout.length}] Processing widget ${layoutItem.i}:`, {
+          breakpoint: currentBreakpoint,
+          oldPosition: widgets.find(w => w.i === layoutItem.i)?.position?.[currentBreakpoint],
+          newPosition: { x: layoutItem.x, y: layoutItem.y, w: layoutItem.w, h: layoutItem.h },
+          hasChanged: JSON.stringify(widgets.find(w => w.i === layoutItem.i)?.position?.[currentBreakpoint]) !== JSON.stringify(layoutItem)
+        });
+
+        LogInfo(`[FRONTEND] Updating widget ${layoutItem.i} position: x=${layoutItem.x}, y=${layoutItem.y}, w=${layoutItem.w}, h=${layoutItem.h}`);
+
+        // Use the new updateWidgetPosition action
+        try {
+          actions.updateWidgetPosition(layoutItem.i, currentBreakpoint, layoutItem);
+          layoutChangesLog(`[Dashboard] Successfully updated position for widget ${layoutItem.i}`);
+          LogInfo(`[FRONTEND] Successfully updated position for widget ${layoutItem.i}`);
+        } catch (widgetError) {
+          console.error(`[Dashboard] Failed to update position for widget ${layoutItem.i}:`, widgetError);
+          LogInfo(`[FRONTEND] ERROR: Failed to update position for widget ${layoutItem.i}: ${widgetError}`);
         }
-        return widget;
       });
 
-      // Update the page with new widget positions
-      actions.updatePage(activePage.id, {
-        ...activePage,
-        widgets: updatedWidgets
-      });
+      await Promise.all(updatePromises);
 
-      console.log('[Dashboard] Widget positions saved for breakpoint:', currentBreakpoint);
+      layoutChangesLog('[Dashboard] All widget positions saved for breakpoint:', currentBreakpoint);
+      LogInfo(`[FRONTEND] All widget positions saved for breakpoint: ${currentBreakpoint}`);
+      LogInfo(`[FRONTEND] === LAYOUT CHANGE EVENT COMPLETED ===`);
+
     } catch (error) {
       console.error('[Dashboard] Failed to save widget positions:', error);
+      LogInfo(`[FRONTEND] ERROR: Failed to save widget positions: ${error}`);
     }
   };
 
   // Update current breakpoint only - layouts are dynamically generated
   const handleBreakpointChange = useCallback((newBreakpoint: Breakpoint, newCols: number) => {
-    console.log(`[Dashboard] Breakpoint changed: ${currentBreakpoint} → ${newBreakpoint}, cols: ${newCols}`);
+    layoutChangesLog(`[Dashboard] Breakpoint changed: ${currentBreakpoint} → ${newBreakpoint}, cols: ${newCols}`);
     setCurrentBreakpoint(newBreakpoint);
   }, [currentBreakpoint]);
 
@@ -483,8 +551,6 @@ const Dashboard = () => {
       layoutsWithConstraints[breakpoint] = layouts.map(layout => {
         const constraints = getWidgetConstraints(layout.i, widgets, breakpoint as Breakpoint);
 
-        console.log(`[Dashboard] Applying constraints for widget ${layout.i}: minW=${constraints.minW}, minH=${constraints.minH}, maxW=${constraints.maxW}, maxH=${constraints.maxH}`);
-
         return {
           ...layout,
           minW: constraints.minW,
@@ -541,6 +607,30 @@ const Dashboard = () => {
         rowHeight={100}
         onLayoutChange={handleLayoutChange}
         onBreakpointChange={handleBreakpointChange}
+        onDragStart={(layout, oldItem, newItem, placeholder, e, element) => {
+          LogInfo(`[FRONTEND] === DRAG START === Widget ${oldItem.i} at ${currentBreakpoint}`);
+          LogInfo(`[FRONTEND] Start position: x=${oldItem.x}, y=${oldItem.y}, w=${oldItem.w}, h=${oldItem.h}`);
+        }}
+        onDrag={(layout, oldItem, newItem, placeholder, e, element) => {
+          // Dragging event - logging disabled for performance
+        }}
+        onDragStop={(layout, oldItem, newItem, placeholder, e, element) => {
+          LogInfo(`[FRONTEND] === DRAG STOP === Widget ${newItem.i}`);
+          LogInfo(`[FRONTEND] New position: x=${newItem.x}, y=${newItem.y}`);
+          LogInfo('[FRONTEND] Layout change should follow after drag stop');
+        }}
+        onResizeStart={(layout, oldItem, newItem, placeholder, e, element) => {
+          LogInfo(`[FRONTEND] === RESIZE START === Widget ${oldItem.i} at ${currentBreakpoint}`);
+          LogInfo(`[FRONTEND] Start size: w=${oldItem.w}, h=${oldItem.h}`);
+        }}
+        onResize={(layout, oldItem, newItem, placeholder, e, element) => {
+          // Resizing event - logging disabled for performance
+        }}
+        onResizeStop={(layout, oldItem, newItem, placeholder, e, element) => {
+          LogInfo(`[FRONTEND] === RESIZE STOP === Widget ${newItem.i}`);
+          LogInfo(`[FRONTEND] New size: w=${newItem.w}, h=${newItem.h}`);
+          LogInfo('[FRONTEND] Layout change should follow after resize stop');
+        }}
         draggableHandle=".widget-header"
         draggableCancel=".widget-action-button, .remove-widget-button"
         compactType={null}
@@ -551,13 +641,23 @@ const Dashboard = () => {
         margin={[16, 16]}
         containerPadding={[16, 16]}
       >
-        {widgets.map((widget) => {
-          const WidgetComponent = widgetMap[widget.type];
-          const isFocused = isWidgetFocused(widget.i);
-          const isSelected = isWidgetSelected(widget.i);
-          
-          
-          return (
+        {(() => {
+          widgetLoadingLog('[FRONTEND] Rendering widgets:', {
+            widgetCount: widgets.length,
+            widgets: widgets.map(w => ({ id: w.i, type: w.type }))
+          });
+          return widgets.map((widget) => {
+            const WidgetComponent = widgetMap[widget.type];
+            const isFocused = isWidgetFocused(widget.i);
+            const isSelected = isWidgetSelected(widget.i);
+
+            widgetLoadingLog(`[FRONTEND] Rendering widget: ${widget.i} (${widget.type})`, {
+              hasComponent: !!WidgetComponent,
+              isFocused,
+              isSelected
+            });
+
+            return (
             <div 
               key={widget.i} 
               className={[
@@ -592,7 +692,8 @@ const Dashboard = () => {
               )}
             </div>
           );
-        })}
+          });
+        })()}
       </ResponsiveGridLayout>
       
       <ContextMenu

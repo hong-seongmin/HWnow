@@ -3,6 +3,7 @@
 
 import type { Layout } from 'react-grid-layout';
 import type { WidgetState, PageState } from '../stores/types';
+import { apiCallsLog } from '../utils/debugConfig';
 
 // Type definitions for Wails API responses
 export interface SystemInfoResponse {
@@ -171,7 +172,7 @@ export class WailsApiService {
                            typeof window.go.main.App !== 'undefined';
     
     if (this.isWailsAvailable) {
-      console.log('[WailsAPI] Wails runtime detected and available');
+      apiCallsLog('[WailsAPI] Wails runtime detected and available');
     }
   }
 
@@ -192,36 +193,44 @@ export class WailsApiService {
     operationName: string,
     useRetry: boolean = false
   ): Promise<T> {
+    apiCallsLog(`[WailsAPI] === EXECUTE WAILS CALL START: ${operationName} ===`);
     this.ensureWailsAvailable();
-    
+
     const execute = async (attempt: number = 1): Promise<T> => {
       try {
         const startTime = Date.now();
         const result = await operation();
         const duration = Date.now() - startTime;
-        
-        console.log(`[WailsAPI] ${operationName} completed in ${duration}ms (attempt ${attempt})`);
+
+        apiCallsLog(`[WailsAPI] ${operationName} completed successfully in ${duration}ms`);
+
         return result;
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        const errorStack = error instanceof Error ? error.stack : 'No stack trace';
+
+        console.error(`[WailsAPI] === ${operationName} FAILED ===`);
         console.error(`[WailsAPI] ${operationName} failed (attempt ${attempt}):`, errorMessage);
-        
+        console.error(`[WailsAPI] Error type: ${typeof error}, error object:`, error);
+        console.error(`[WailsAPI] Stack trace:`, errorStack);
+
         // Retry logic for transient failures
         if (useRetry && attempt < this.retryConfig.maxRetries) {
           const delay = Math.min(
             this.retryConfig.baseDelayMs * Math.pow(2, attempt - 1),
             this.retryConfig.maxDelayMs
           );
-          
-          console.warn(`[WailsAPI] Retrying ${operationName} in ${delay}ms...`);
+
+          console.warn(`[WailsAPI] Retrying ${operationName} in ${delay}ms... (attempt ${attempt + 1}/${this.retryConfig.maxRetries})`);
           await new Promise(resolve => setTimeout(resolve, delay));
           return execute(attempt + 1);
         }
-        
+
+        console.error(`[WailsAPI] === ${operationName} FAILED PERMANENTLY ===`);
         throw new Error(`${operationName} failed: ${errorMessage}`);
       }
     };
-    
+
     return execute();
   }
 
@@ -451,18 +460,39 @@ export class WailsApiService {
     };
   }
 
-  private safeJsonParse<T>(jsonString: string, defaultValue: T): T {
-    try {
-      return jsonString ? JSON.parse(jsonString) : defaultValue;
-    } catch (error) {
-      console.warn('Failed to parse JSON, using default value:', error);
+  private safeJsonParse<T>(jsonInput: unknown, defaultValue: T): T {
+    if (jsonInput === undefined || jsonInput === null || jsonInput === '') {
       return defaultValue;
     }
+
+    if (typeof jsonInput === 'object') {
+      return jsonInput as T;
+    }
+
+    if (typeof jsonInput === 'string') {
+      try {
+        return jsonInput ? JSON.parse(jsonInput) : defaultValue;
+      } catch (error) {
+        console.warn('Failed to parse JSON, using default value:', error);
+        return defaultValue;
+      }
+    }
+
+    console.warn('Unexpected widget payload type, using default value:', typeof jsonInput);
+    return defaultValue;
   }
 
   public async saveWidgets(widgets: WidgetState[]): Promise<void> {
-    if (widgets.length === 0) return;
-    
+    apiCallsLog('[WailsAPI] === SAVE WIDGETS START ===');
+    apiCallsLog(`[WailsAPI] saveWidgets called with ${widgets.length} widgets`);
+
+    if (widgets.length === 0) {
+      apiCallsLog('[WailsAPI] No widgets to save, returning early');
+      return;
+    }
+
+    // Widget details logged in debug mode only
+
     // Group widgets by userId and pageId
     const groupedWidgets = widgets.reduce((acc, widget) => {
       const key = `${widget.userId}:${widget.pageId}`;
@@ -482,17 +512,29 @@ export class WailsApiService {
       return acc;
     }, {} as Record<string, { userID: string; pageID: string; widgets: Array<{ widgetId: string; widgetType: string; config: string; layout: string }> }>);
 
+    apiCallsLog(`[WailsAPI] Created ${Object.keys(groupedWidgets).length} groups with ${widgets.length} total widgets`);
+
     // Save each group
-    for (const group of Object.values(groupedWidgets)) {
-      const response = await this.executeWailsCall(
-        () => window.go.main.App.SaveWidgets(group.userID, group.pageID, group.widgets),
-        `SaveWidgets(${group.userID}, ${group.pageID})`
-      );
-      
-      if (!response.success) {
-        throw new Error(response.message);
+    for (const [groupKey, group] of Object.entries(groupedWidgets)) {
+      try {
+        const response = await this.executeWailsCall(
+          () => window.go.main.App.SaveWidgets(group.userID, group.pageID, group.widgets),
+          `SaveWidgets(${group.userID}, ${group.pageID}, ${group.widgets.length} widgets)`
+        );
+
+        if (!response.success) {
+          console.error(`[WailsAPI] SaveWidgets failed for group ${groupKey}:`, response.message);
+          throw new Error(response.message);
+        }
+
+        apiCallsLog(`[WailsAPI] Successfully saved group ${groupKey}`);
+      } catch (error) {
+        console.error(`[WailsAPI] Error saving group ${groupKey}:`, error);
+        throw error;
       }
     }
+
+    apiCallsLog('[WailsAPI] === SAVE WIDGETS COMPLETED SUCCESSFULLY ===');
   }
 
   public async deleteWidget(userId: string, widgetId: string, pageId: string = 'main-page'): Promise<void> {
@@ -577,7 +619,7 @@ export class WailsApiService {
   public async saveDashboardLayout(userId: string, layout: Layout[]): Promise<void> {
     // This would require converting layout to widget format
     // For now, we'll log it as this needs more complex implementation
-    console.log('Save dashboard layout:', { userId, layout });
+    apiCallsLog('Save dashboard layout:', { userId, layout });
   }
 
   // Privilege checking (placeholder - needs backend implementation)

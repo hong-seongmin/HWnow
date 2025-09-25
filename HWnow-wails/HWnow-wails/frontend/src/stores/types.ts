@@ -13,13 +13,13 @@ export type WidgetType = 'cpu' | 'ram' | 'disk_read' | 'disk_write' | 'net_sent'
   'gpu' | 'gpu_process' | 'system_uptime' | 'process_monitor' | 'battery' | 'disk_space' | 'network_status' | 
   'memory_detail' | 'system_log';
 
-// 위젯 설정 타입
+// ?�젯 ?�정 ?�??
 export interface WidgetConfig {
   chartType?: 'line' | 'area' | 'bar' | 'gauge';
   color?: string;
   dataPoints?: number;
   unit?: string;
-  showGraph?: boolean; // 그래프 표시 여부
+  showGraph?: boolean; // 그래???�시 ?��?
   showUsedMemory?: boolean;
   showTotalMemory?: boolean;
   showPercentage?: boolean;
@@ -27,59 +27,59 @@ export interface WidgetConfig {
   warningThreshold?: number;
   criticalThreshold?: number;
   
-  // CPU 위젯
+  // CPU ?�젯
   showCoreUsage?: boolean;
   
-  // 디스크 관련
+  // ?�스??관??
   showReadSpeed?: boolean;
   showWriteSpeed?: boolean;
   showTotalSpace?: boolean;
   showFreeSpace?: boolean;
   
-  // 네트워크 관련
+  // ?�트?�크 관??
   showSentSpeed?: boolean;
   showRecvSpeed?: boolean;
   showTotalSent?: boolean;
   showTotalRecv?: boolean;
   
-  // GPU 위젯
+  // GPU ?�젯
   showGpuMemory?: boolean;
   showGpuTemperature?: boolean;
   showGpuPower?: boolean;
   
-  // 프로세스 모니터링
+  // ?�로?�스 모니?�링
   processCount?: number;
   sortBy?: 'cpu' | 'memory' | 'name';
   
-  // GPU 프로세스 모니터링 (기본 설정)
+  // GPU ?�로?�스 모니?�링 (기본 ?�정)
   gpuProcessCount?: number;
   gpuSortBy?: 'gpu_usage_percent' | 'gpu_memory_mb' | 'name' | 'pid' | 'type' | 'status';
   gpuSortOrder?: 'asc' | 'desc';
   
-  // GPU 프로세스 필터링
+  // GPU ?�로?�스 ?�터�?
   gpuFilterEnabled?: boolean;
   gpuUsageThreshold?: number;
   gpuMemoryThreshold?: number;
   gpuFilterType?: 'and' | 'or';
   
-  // GPU 프로세스 실시간 업데이트
+  // GPU ?�로?�스 ?�시�??�데?�트
   gpuShowUpdateIndicators?: boolean;
   gpuEnableUpdateAnimations?: boolean;
   gpuUpdateInterval?: number;
   
-  // GPU 프로세스 시각적 피드백
+  // GPU ?�로?�스 ?�각???�드�?
   gpuShowStatusColors?: boolean;
   gpuShowUsageGradients?: boolean;
   gpuShowProcessIcons?: boolean;
   gpuShowStatusAnimations?: boolean;
   
-  // GPU 프로세스 제어
+  // GPU ?�로?�스 ?�어
   gpuEnableProcessControl?: boolean;
   gpuShowControlButtons?: boolean;
   gpuEnableContextMenu?: boolean;
   gpuRequireConfirmation?: boolean;
   
-  // GPU 프로세스 표시
+  // GPU ?�로?�스 ?�시
   gpuShowProcessPriority?: boolean;
   gpuShowProcessCommand?: boolean;
   gpuShowLastUpdateTime?: boolean;
@@ -87,38 +87,38 @@ export interface WidgetConfig {
   gpuShowTerminateButton?: boolean;
   gpuRefreshInterval?: number;
   
-  // 배터리 위젯
+  // 배터�??�젯
   showBatteryTime?: boolean;
   showChargingStatus?: boolean;
   
-  // 메모리 상세
+  // 메모�??�세
   showPhysicalMemory?: boolean;
   showVirtualMemory?: boolean;
   showSwapMemory?: boolean;
   
-  // 시스템 로그
+  // ?�스??로그
   logCount?: number;
   logLevel?: 'all' | 'error' | 'warning' | 'info';
   
-  // 네트워크 상태
+  // ?�트?�크 ?�태
   showIpAddress?: boolean;
   showConnectionStatus?: boolean;
   showBandwidth?: boolean;
   
-  [key: string]: any; // 추가 설정을 위한 인덱스 시그니처
+  [key: string]: any; // 추�? ?�정???�한 ?�덱???�그?�처
 }
 
-// DB에 저장되는 위젯의 상태
+// DB???�?�되???�젯???�태
 export interface WidgetState {
   userId: string;
   pageId: string;
   widgetId: string;
   widgetType: WidgetType;
-  config: string; // JSON string for widget-specific config
-  layout?: string; // JSON string for layout info
+  config: string | WidgetConfig | Record<string, any>; // JSON string or object for widget-specific config
+  layout?: string | Record<string, any>; // JSON string or object for layout info
 }
 
-// DB에 저장되는 페이지 정보
+// DB???�?�되???�이지 ?�보
 export interface PageState {
   pageId: string;
   userId: string;
@@ -126,12 +126,12 @@ export interface PageState {
   pageOrder: number;
 }
 
-// 프론트엔드에서 사용하는 위젯 객체
+// ?�론?�엔?�에???�용?�는 ?�젯 객체
 export interface Widget {
   i: string;
   type: WidgetType;
-  config?: WidgetConfig; // 위젯별 설정 추가
-  position?: ResponsiveLayouts; // 각 브레이크포인트별 고정 위치 정보
+  config?: WidgetConfig; // ?�젯�??�정 추�?
+  position?: { [key in Breakpoint]?: Layout }; // �?브레?�크?�인?�별 Layout 객체 (배열???�님)
 }
 
 export interface Page {
@@ -159,6 +159,7 @@ export interface DashboardState {
     updateLayout: (layouts: Layout[]) => Promise<void>;
     updateResponsiveLayouts: (responsiveLayouts: ResponsiveLayouts) => Promise<void>;
     updateWidgetConfig: (widgetId: string, config: Partial<WidgetConfig>) => void;
+    updateWidgetPosition: (widgetId: string, breakpoint: Breakpoint, layoutItem: Layout) => void;
     
     saveState: () => void;
     saveStateImmediate: () => Promise<void>;

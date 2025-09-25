@@ -8,11 +8,14 @@
   "frontend:dev:serverUrl": "auto",
   "build": {
     "compiler": "go",
-    "ldflags": "-H windowsgui -s -w",
+    "ldflags": "-s -w",
     "tags": [],
     "race": false,
     "upx": false,
     "upxflags": ""
+  },
+  "debug": {
+    "openinspectoronstart": true
   },
   "author": {
     "name": "solon",

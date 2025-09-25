@@ -1,6 +1,7 @@
 package monitoring
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -24,6 +25,26 @@ import (
 	"github.com/shirou/gopsutil/v3/process"
 )
 
+// Global monitor manager instance
+var globalMonitorManager MonitorManager
+var monitorManagerOnce sync.Once
+
+// getMonitorManager returns the global monitor manager instance (singleton)
+func getMonitorManager() MonitorManager {
+	monitorManagerOnce.Do(func() {
+		config := DefaultMonitoringConfig()
+		globalMonitorManager = NewMonitorManager(config)
+
+		// Setup default monitors manually since it's not in the interface
+		if manager, ok := globalMonitorManager.(*monitorManager); ok {
+			if err := manager.SetupDefaultMonitors(); err != nil {
+				log.Printf("Failed to setup default monitors: %v", err)
+			}
+		}
+	})
+	return globalMonitorManager
+}
+
 
 // 로깅 레벨 정의
 type LogLevel int
@@ -41,13 +62,31 @@ var (
 	logFile  *os.File
 )
 
+type widgetLogWriter struct {
+	target io.Writer
+}
+
+func (w widgetLogWriter) Write(p []byte) (int, error) {
+	if bytes.Contains(p, []byte("[WIDGET")) {
+		if w.target != nil {
+			return w.target.Write(p)
+		}
+		return len(p), nil
+	}
+	return len(p), nil
+}
+
+func init() {
+	log.SetOutput(widgetLogWriter{target: os.Stdout})
+}
+
 // Phase 8: 로깅 완전 비활성화 (극한 최적화)
 // GPU 모니터링 중 과도한 I/O 오버헤드를 제거하여 CPU 사용량 15-25% 감소
 // 203개 로깅 호출의 I/O 오버헤드 완전 제거
 
 // 성능 최적화용 로깅 비활성화 플래그
 const (
-	// GPU 모니터링 중 로깅 완전 비활성화로 극한 성능 확보
+	// GPU 모니터링 중 로깅 완전 비활성화로 극한 성능 확보 및 위젯 로그 분리
 	DISABLE_GPU_MONITORING_LOGS = true
 	// 일반 로깅은 유지 (시스템 안정성 위해)
 	DISABLE_ALL_LOGS = false
@@ -75,6 +114,34 @@ func LogWarnOptimized(msg string, args ...interface{}) {
 func LogErrorOptimized(msg string, args ...interface{}) {
 	if !DISABLE_GPU_MONITORING_LOGS {
 		LogError(msg, args...)
+	}
+}
+
+// Widget-specific logging functions with filtering
+// These functions only log widget-related operations
+var ENABLE_WIDGET_LOGS = true  // Widget 로그 활성화 플래그
+
+func LogWidgetInfo(msg string, args ...interface{}) {
+	if ENABLE_WIDGET_LOGS {
+		logArgs := []interface{}{"[WIDGET_INFO]", msg}
+		logArgs = append(logArgs, args...)
+		log.Println(logArgs...)
+	}
+}
+
+func LogWidgetDebug(msg string, args ...interface{}) {
+	if ENABLE_WIDGET_LOGS && logLevel <= LogLevelDebug {
+		logArgs := []interface{}{"[WIDGET_DEBUG]", msg}
+		logArgs = append(logArgs, args...)
+		log.Println(logArgs...)
+	}
+}
+
+func LogWidgetError(msg string, args ...interface{}) {
+	if ENABLE_WIDGET_LOGS {
+		logArgs := []interface{}{"[WIDGET_ERROR]", msg}
+		logArgs = append(logArgs, args...)
+		log.Println(logArgs...)
 	}
 }
 
@@ -598,8 +665,8 @@ func parseNVIDIAProcessesUnifiedOptimized() ([]GPUProcess, error) {
 // parseNVIDIAPmonOutputOptimized는 pmon 출력을 최적화된 방식으로 파싱
 func parseNVIDIAPmonOutputOptimized(output []byte) ([]GPUProcess, error) {
 	// 실제 GPU 사용률 데이터 수집을 위한 pmon 파싱 (nvidia-smi pmon -c 1 -s um)
-	LogInfo("=== 실제 GPU 사용률 수집: PMON 출력 파싱 시작 ===", "output_length", len(output))
-	LogInfo("PMON RAW OUTPUT", "raw_output", string(output))
+	LogInfoOptimized("=== 실제 GPU 사용률 수집: PMON 출력 파싱 시작 ===", "output_length", len(output))
+	LogInfoOptimized("PMON RAW OUTPUT", "raw_output", string(output))
 	
 	// 임시 프로세스 정보 구조체
 	type ProcessInfo struct {
@@ -708,10 +775,10 @@ func parseNVIDIAPmonOutputOptimized(output []byte) ([]GPUProcess, error) {
 				Status:    "running",
 			}
 			
-			LogInfo("실제 GPU 사용률 할당 완료", 
+			LogInfoOptimized("실제 GPU 사용률 할당 완료",
 				"pid", process.PID,
 				"name", process.Name,
-				"actual_gpu_usage", process.GPUUsage, 
+				"actual_gpu_usage", process.GPUUsage,
 				"gpu_memory_mb", process.GPUMemory,
 				"type", process.Type)
 				
@@ -862,24 +929,25 @@ const (
 // InitializeLogging - 로깅 시스템 초기화
 func InitializeLogging(level LogLevel, logFilePath string) error {
 	logLevel = level
-	
+
+	var writer io.Writer = os.Stdout
 	if logFilePath != "" {
 		var err error
 		logFile, err = os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		if err != nil {
 			return fmt.Errorf("failed to open log file: %v", err)
 		}
-		
-		// 멀티 라이터로 파일과 콘솔 모두에 출력
-		multiWriter := io.MultiWriter(os.Stdout, logFile)
-		log.SetOutput(multiWriter)
+		// ?? ???? ??? ??? ?? ??
+		writer = io.MultiWriter(os.Stdout, logFile)
 	}
-	
+
+	log.SetOutput(widgetLogWriter{target: writer})
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	LogInfo("Logging system initialized", "level", level, "file", logFilePath)
-	
+
 	return nil
 }
+
 
 // CloseLogging - 로깅 시스템 종료
 func CloseLogging() {
@@ -1466,9 +1534,9 @@ func Start(wsChan chan<- *ResourceSnapshot, dbChan chan<- *ResourceSnapshot) {
 		if cpuInfoCounter%5 == 0 {
 			gpuProcesses, err := getGPUProcesses()
 			if err != nil {
-				log.Printf("Error getting GPU processes: %v", err)
+				LogErrorOptimized("Error getting GPU processes: %v", err)
 			} else {
-				log.Printf("Found %d GPU processes", len(gpuProcesses))
+				LogInfoOptimized("Found %d GPU processes", len(gpuProcesses))
 				for i, proc := range gpuProcesses {
 					// GPU 프로세스 정보를 메트릭으로 변환
 					metrics = append(metrics, Metric{
@@ -1497,14 +1565,14 @@ func Start(wsChan chan<- *ResourceSnapshot, dbChan chan<- *ResourceSnapshot) {
 		// GPU Monitoring - 상세 에러 로깅 추가
 		gpuInfo, err := getGPUInfo()
 		if err != nil {
-			log.Printf("[DETAILED_ERROR] GPU info collection failed - Error: %v, Type: %T", err, err)
-			log.Printf("[DETAILED_ERROR] Current OS: %s - checking nvidia-smi, WMI, and other GPU APIs", runtime.GOOS)
-			log.Printf("[DETAILED_ERROR] Attempting to identify GPU detection failure reasons...")
+			LogErrorOptimized("[DETAILED_ERROR] GPU info collection failed - Error: %v, Type: %T", err, err)
+			LogErrorOptimized("[DETAILED_ERROR] Current OS: %s - checking nvidia-smi, WMI, and other GPU APIs", runtime.GOOS)
+			LogErrorOptimized("[DETAILED_ERROR] Attempting to identify GPU detection failure reasons...")
 			
 			// GPU 감지 시도 및 결과 로깅
 			if runtime.GOOS == "windows" {
-				log.Printf("[DETAILED_ERROR] Windows GPU detection - nvidia-smi available: %v", isNVIDIASMIAvailable())
-				log.Printf("[DETAILED_ERROR] Windows GPU detection - WMI accessible: %v", isWMIAccessible())
+				LogErrorOptimized("[DETAILED_ERROR] Windows GPU detection - nvidia-smi available: %v", isNVIDIASMIAvailable())
+				LogErrorOptimized("[DETAILED_ERROR] Windows GPU detection - WMI accessible: %v", isWMIAccessible())
 			}
 			
 			// GPU가 없거나 에러 상황에서도 기본값을 전송하여 프론트엔드가 상태를 알 수 있도록 함
@@ -1516,11 +1584,11 @@ func Start(wsChan chan<- *ResourceSnapshot, dbChan chan<- *ResourceSnapshot) {
 			
 			// GPU 정보도 "No GPU" 상태로 전송
 			if shouldSendCpuInfo {
-				log.Printf("[DETAILED_ERROR] Sending GPU info: No GPU detected")
+				LogErrorOptimized("[DETAILED_ERROR] Sending GPU info: No GPU detected")
 				metrics = append(metrics, Metric{Type: "gpu_info", Value: 0.0, Info: "No GPU Detected"})
 			}
 		} else {
-			log.Printf("[SUCCESS] GPU metrics - Usage: %.1f%%, Memory: %.0f/%.0fMB, Temp: %.1f°C, Power: %.1fW", 
+			LogInfoOptimized("[SUCCESS] GPU metrics - Usage: %.1f%%, Memory: %.0f/%.0fMB, Temp: %.1f°C, Power: %.1fW",
 				gpuInfo.Usage, gpuInfo.MemoryUsed, gpuInfo.MemoryTotal, gpuInfo.Temperature, gpuInfo.Power)
 			metrics = append(metrics, Metric{Type: "gpu_usage", Value: gpuInfo.Usage})
 			metrics = append(metrics, Metric{Type: "gpu_memory_used", Value: gpuInfo.MemoryUsed})
@@ -1530,7 +1598,7 @@ func Start(wsChan chan<- *ResourceSnapshot, dbChan chan<- *ResourceSnapshot) {
 			
 			// GPU 정보 (모델명 등)는 처음에만 또는 주기적으로 전송
 			if shouldSendCpuInfo {
-				log.Printf("[SUCCESS] Sending GPU info: %s", gpuInfo.Name)
+				LogInfoOptimized("[SUCCESS] Sending GPU info: %s", gpuInfo.Name)
 				metrics = append(metrics, Metric{Type: "gpu_info", Value: 1.0, Info: gpuInfo.Name})
 			}
 		}
@@ -1559,20 +1627,27 @@ func getCpuUsage() (float64, error) {
 }
 
 func GetCPUCoreUsage() ([]float64, error) {
-	// CPU 최적화 Phase 3: 코어별 측정 시간 단축 및 캐시 적용
-	percentages, err := cpu.Percent(200*time.Millisecond, true) // CPU 최적화: 1초 → 200ms (5배 빨라짐)
-	if err != nil {
-		return nil, err
+	// Use the new CPU monitor instead of direct implementation
+	manager := getMonitorManager()
+	cpuMonitor := manager.GetCPUMonitor()
+	if cpuMonitor == nil {
+		// Fallback to direct implementation if monitor is not available
+		percentages, err := cpu.Percent(200*time.Millisecond, true) // CPU 최적화: 1초 → 200ms (5배 빨라짐)
+		if err != nil {
+			return nil, err
+		}
+
+		// CPU 정보 확인
+		cpuInfo, err := cpu.Info()
+		if err == nil && len(cpuInfo) > 0 {
+			log.Printf("CPU Info - Model: %s, Cores: %d, Physical Cores: %d",
+				cpuInfo[0].ModelName, cpuInfo[0].Cores, len(percentages))
+		}
+
+		return percentages, nil
 	}
-	
-	// CPU 정보 확인
-	cpuInfo, err := cpu.Info()
-	if err == nil && len(cpuInfo) > 0 {
-		log.Printf("CPU Info - Model: %s, Cores: %d, Physical Cores: %d", 
-			cpuInfo[0].ModelName, cpuInfo[0].Cores, len(percentages))
-	}
-	
-	return percentages, nil
+
+	return cpuMonitor.GetCPUCoreUsage()
 }
 
 func getMemUsage() (float64, error) {
@@ -2184,12 +2259,20 @@ func getTopProcesses(count int) ([]ProcessInfo, error) {
 
 // GetBatteryInfo returns real battery information from the system
 func GetBatteryInfo() (*BatteryInfo, error) {
-	switch runtime.GOOS {
-	case "windows":
-		return getBatteryStatusWindows()
-	default:
-		return nil, fmt.Errorf("battery monitoring not supported on platform: %s", runtime.GOOS)
+	// Use the new system info provider instead of direct implementation
+	manager := getMonitorManager()
+	sysInfo := manager.GetSystemInfoProvider()
+	if sysInfo == nil {
+		// Fallback to direct implementation if provider is not available
+		switch runtime.GOOS {
+		case "windows":
+			return getBatteryStatusWindows()
+		default:
+			return nil, fmt.Errorf("battery monitoring not supported on platform: %s", runtime.GOOS)
+		}
 	}
+
+	return sysInfo.GetBatteryInfo()
 }
 
 func getBatteryStatusWindows() (*BatteryInfo, error) {
@@ -4204,16 +4287,27 @@ func getProcessNameUnix(pid int32) string {
 // getGPUProcesses는 현재 GPU를 사용하는 모든 프로세스 목록을 반환합니다.
 // getGPUProcesses 캐시된 GPU 프로세스 반환 (CPU 최적화)
 func getGPUProcesses() ([]GPUProcess, error) {
-	log.Printf("[DEBUG] getGPUProcesses() called - Phase 16 Debug")
+	LogDebugOptimized("[DEBUG] getGPUProcesses() called - Phase 16 Debug")
 	result, err := getCachedGPUProcesses()
-	log.Printf("[DEBUG] getGPUProcesses() result: %d processes, error: %v", len(result), err)
+	LogDebugOptimized("[DEBUG] getGPUProcesses() result: %d processes, error: %v", len(result), err)
 	return result, err
 }
 
 // Phase 1.1: Backend pre-computed GPU process querying
 func GetGPUProcessesFiltered(query GPUProcessQuery) (*GPUProcessResponse, error) {
+	manager := getMonitorManager()
+	gpuMonitor := manager.GetGPUMonitor()
+	if gpuMonitor == nil {
+		// Fallback to original implementation
+		return GetGPUProcessesFilteredOriginal(query)
+	}
+
+	return gpuMonitor.GetGPUProcessesFiltered(query)
+}
+
+func GetGPUProcessesFilteredOriginal(query GPUProcessQuery) (*GPUProcessResponse, error) {
 	startTime := time.Now()
-	
+
 	// Get all processes from cache
 	allProcesses, err := getCachedGPUProcesses()
 	if err != nil {
@@ -4323,8 +4417,19 @@ func sortGPUProcesses(processes []GPUProcess, sortConfig GPUProcessSort) {
 
 // Phase 1.2: Delta update system functions
 func GetGPUProcessesDelta(lastUpdateID string) (*GPUProcessDeltaResponse, error) {
+	manager := getMonitorManager()
+	gpuMonitor := manager.GetGPUMonitor()
+	if gpuMonitor == nil {
+		// Fallback to original implementation
+		return GetGPUProcessesDeltaOriginal(lastUpdateID)
+	}
+
+	return gpuMonitor.GetGPUProcessesDelta(lastUpdateID)
+}
+
+func GetGPUProcessesDeltaOriginal(lastUpdateID string) (*GPUProcessDeltaResponse, error) {
 	startTime := time.Now()
-	
+
 	// Get current processes
 	currentProcesses, err := getCachedGPUProcesses()
 	if err != nil {
@@ -4580,7 +4685,15 @@ var criticalProcesses = []string{
 
 // GetCurrentPlatform - 현재 운영체제 플랫폼 반환
 func GetCurrentPlatform() string {
-	return runtime.GOOS
+	// Use the new system info provider instead of direct implementation
+	manager := getMonitorManager()
+	sysInfo := manager.GetSystemInfoProvider()
+	if sysInfo == nil {
+		// Fallback to direct implementation if provider is not available
+		return runtime.GOOS
+	}
+
+	return sysInfo.GetCurrentPlatform()
 }
 
 // Enhanced critical process checking with protection service
@@ -4871,40 +4984,48 @@ func SetGPUProcessPriority(pid int32, priority string) error {
 
 // GetCPUCores returns the number of CPU cores
 func GetCPUCores() (int, error) {
-	// First try: Windows WMI approach for core count
-	if runtime.GOOS == "windows" {
-		if cores := getCPUCoresFromWMI(); cores > 0 {
-			LogInfo("CPU cores retrieved from WMI", "cores", cores)
-			return cores, nil
+	// Use the new CPU monitor instead of direct implementation
+	manager := getMonitorManager()
+	cpuMonitor := manager.GetCPUMonitor()
+	if cpuMonitor == nil {
+		// Fallback to direct implementation if monitor is not available
+		// First try: Windows WMI approach for core count
+		if runtime.GOOS == "windows" {
+			if cores := getCPUCoresFromWMI(); cores > 0 {
+				LogInfo("CPU cores retrieved from WMI", "cores", cores)
+				return cores, nil
+			}
 		}
+
+		// Second try: gopsutil with increased timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		cpuInfo, err := cpu.InfoWithContext(ctx)
+		if err != nil {
+			// Fallback to runtime.NumCPU() if gopsutil fails
+			LogWarn("Failed to get CPU info from gopsutil, using runtime fallback", "error", err)
+			return runtime.NumCPU(), nil
+		}
+
+		if len(cpuInfo) == 0 {
+			// Fallback to runtime.NumCPU() if no CPU info available
+			LogWarn("No CPU info available from gopsutil, using runtime fallback")
+			return runtime.NumCPU(), nil
+		}
+
+		// Verify the core count is reasonable
+		cores := int(cpuInfo[0].Cores)
+		if cores <= 0 {
+			LogWarn("Invalid CPU core count from gopsutil, using runtime fallback", "reported_cores", cores)
+			return runtime.NumCPU(), nil
+		}
+
+		LogInfo("CPU cores retrieved from gopsutil", "cores", cores)
+		return cores, nil
 	}
 
-	// Second try: gopsutil with increased timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	cpuInfo, err := cpu.InfoWithContext(ctx)
-	if err != nil {
-		// Fallback to runtime.NumCPU() if gopsutil fails
-		LogWarn("Failed to get CPU info from gopsutil, using runtime fallback", "error", err)
-		return runtime.NumCPU(), nil
-	}
-
-	if len(cpuInfo) == 0 {
-		// Fallback to runtime.NumCPU() if no CPU info available
-		LogWarn("No CPU info available from gopsutil, using runtime fallback")
-		return runtime.NumCPU(), nil
-	}
-
-	// Verify the core count is reasonable
-	cores := int(cpuInfo[0].Cores)
-	if cores <= 0 {
-		LogWarn("Invalid CPU core count from gopsutil, using runtime fallback", "reported_cores", cores)
-		return runtime.NumCPU(), nil
-	}
-
-	LogInfo("CPU cores retrieved from gopsutil", "cores", cores)
-	return cores, nil
+	return cpuMonitor.GetCPUCores()
 }
 
 // getCPUCoresFromWMI retrieves CPU core count using Windows WMI
@@ -4945,37 +5066,45 @@ func getCPUCoresFromWMI() int {
 
 // GetCPUModelName returns the CPU model name
 func GetCPUModelName() (string, error) {
-	// First try: Windows WMI approach (faster and more reliable on Windows)
-	if runtime.GOOS == "windows" {
-		if modelName := getCPUModelFromWMI(); modelName != "" {
-			LogInfo("CPU model retrieved from WMI", "model", modelName)
-			return modelName, nil
+	// Use the new CPU monitor instead of direct implementation
+	manager := getMonitorManager()
+	cpuMonitor := manager.GetCPUMonitor()
+	if cpuMonitor == nil {
+		// Fallback to direct implementation if monitor is not available
+		// First try: Windows WMI approach (faster and more reliable on Windows)
+		if runtime.GOOS == "windows" {
+			if modelName := getCPUModelFromWMI(); modelName != "" {
+				LogInfo("CPU model retrieved from WMI", "model", modelName)
+				return modelName, nil
+			}
 		}
+
+		// Second try: gopsutil with increased timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		cpuInfo, err := cpu.InfoWithContext(ctx)
+		if err != nil {
+			LogWarn("Failed to get CPU model name from gopsutil", "error", err)
+			return "Unknown CPU", nil
+		}
+
+		if len(cpuInfo) == 0 {
+			LogWarn("No CPU model info available from gopsutil")
+			return "Unknown CPU", nil
+		}
+
+		modelName := strings.TrimSpace(cpuInfo[0].ModelName)
+		if modelName == "" {
+			LogWarn("Empty CPU model name from gopsutil")
+			return "Unknown CPU", nil
+		}
+
+		LogInfo("CPU model retrieved from gopsutil", "model", modelName)
+		return modelName, nil
 	}
 
-	// Second try: gopsutil with increased timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	cpuInfo, err := cpu.InfoWithContext(ctx)
-	if err != nil {
-		LogWarn("Failed to get CPU model name from gopsutil", "error", err)
-		return "Unknown CPU", nil
-	}
-
-	if len(cpuInfo) == 0 {
-		LogWarn("No CPU model info available from gopsutil")
-		return "Unknown CPU", nil
-	}
-
-	modelName := strings.TrimSpace(cpuInfo[0].ModelName)
-	if modelName == "" {
-		LogWarn("Empty CPU model name from gopsutil")
-		return "Unknown CPU", nil
-	}
-
-	LogInfo("CPU model retrieved from gopsutil", "model", modelName)
-	return modelName, nil
+	return cpuMonitor.GetCPUModelName()
 }
 
 // getCPUModelFromWMI retrieves CPU model using Windows WMI
@@ -5014,31 +5143,60 @@ func getCPUModelFromWMI() string {
 
 // GetTotalMemory returns total system memory in MB
 func GetTotalMemory() (float64, error) {
-	memStat, err := mem.VirtualMemory()
+	// Use the new memory monitor instead of direct implementation
+	manager := getMonitorManager()
+	memoryMonitor := manager.GetMemoryMonitor()
+	if memoryMonitor == nil {
+		// Fallback to direct implementation if monitor is not available
+		memStat, err := mem.VirtualMemory()
+		if err != nil {
+			return 0, err
+		}
+		return float64(memStat.Total) / 1024 / 1024, nil
+	}
+
+	totalGB, err := memoryMonitor.GetTotalMemory()
 	if err != nil {
 		return 0, err
 	}
-	return float64(memStat.Total) / 1024 / 1024, nil
+	// Convert GB to MB to maintain compatibility
+	return totalGB * 1024, nil
 }
 
 // GetBootTime returns system boot time
 func GetBootTime() (time.Time, error) {
-	bootTime, err := host.BootTime()
-	if err != nil {
-		return time.Time{}, err
+	// Use the new system info provider instead of direct implementation
+	manager := getMonitorManager()
+	sysInfo := manager.GetSystemInfoProvider()
+	if sysInfo == nil {
+		// Fallback to direct implementation if provider is not available
+		bootTime, err := host.BootTime()
+		if err != nil {
+			return time.Time{}, err
+		}
+		return time.Unix(int64(bootTime), 0), nil
 	}
-	return time.Unix(int64(bootTime), 0), nil
+
+	return sysInfo.GetBootTime()
 }
 
 // GetSystemUptime returns system uptime in seconds
 func GetSystemUptime() (int64, error) {
-	bootTime, err := GetBootTime()
-	if err != nil {
-		return 0, err
+	// Use the new system info provider instead of direct implementation
+	manager := getMonitorManager()
+	sysInfo := manager.GetSystemInfoProvider()
+	if sysInfo == nil {
+		// Fallback to direct implementation if provider is not available
+		bootTime, err := GetBootTime()
+		if err != nil {
+			return 0, err
+		}
+
+		uptime := time.Since(bootTime).Seconds()
+		return int64(uptime), nil
 	}
-	
-	uptime := time.Since(bootTime).Seconds()
-	return int64(uptime), nil
+
+	return sysInfo.GetSystemUptime()
 }
 
 // GetMemoryDetails returns detailed memory information
@@ -5110,12 +5268,40 @@ func GetTopProcesses(count int) ([]ProcessInfo, error) {
 
 // GetGPUProcesses returns GPU processes (alias for existing function)
 func GetGPUProcesses() ([]GPUProcess, error) {
-	return getGPUProcesses()
+	manager := getMonitorManager()
+	gpuMonitor := manager.GetGPUMonitor()
+	if gpuMonitor == nil {
+		// Fallback to direct implementation
+		return getGPUProcesses()
+	}
+
+	// Use GPU monitor to get processes (simplified approach)
+	query := GPUProcessQuery{
+		Filter:   GPUProcessFilter{Enabled: false},
+		Sort:     GPUProcessSort{},
+		MaxItems: 0, // Get all
+		Offset:   0,
+	}
+
+	response, err := gpuMonitor.GetGPUProcessesFiltered(query)
+	if err != nil {
+		// Fallback to direct implementation
+		return getGPUProcesses()
+	}
+
+	return response.Processes, nil
 }
 
 // GetGPUInfo returns GPU information (alias for existing function)
 func GetGPUInfo() (*GPUInfo, error) {
-	return getGPUInfo()
+	manager := getMonitorManager()
+	gpuMonitor := manager.GetGPUMonitor()
+	if gpuMonitor == nil {
+		// Fallback to direct implementation
+		return getGPUInfo()
+	}
+
+	return gpuMonitor.GetGPUInfo()
 }
 
 // VerifyGPUProcess validates if a process is a valid GPU process with process name

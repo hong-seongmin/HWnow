@@ -65,6 +65,32 @@
       console.log('✅ [DEBUG] Error detection initialized');
     </script>
     
+    <!-- Widget Loading Debug Auto-Enable -->
+    <script>
+      console.log('🟢 [DIRECT JS] This JavaScript is running!');
+      document.body.style.backgroundColor = '#f0f0f0';
+
+      // Auto-enable widget loading debug
+      localStorage.setItem('WIDGET_LOADING_DEBUG', 'true');
+      console.log('🔧 [DEBUG] Widget loading debug auto-enabled');
+
+      setTimeout(() => {
+        const root = document.getElementById('root');
+        if (root && root.children.length === 0) {
+          root.innerHTML = `
+            <div style="padding: 30px; background: lightblue; margin: 20px; border-radius: 10px;">
+              <h1>🔧 Direct JavaScript Test</h1>
+              <p>This content is rendered by direct JavaScript, not React.</p>
+              <p>If you see this, basic JavaScript is working.</p>
+              <p>Time: ${new Date().toLocaleString()}</p>
+              <button onclick="alert('JavaScript click events work!')">Test Click</button>
+            </div>
+          `;
+          console.log('🟢 [DIRECT JS] Added test content to root');
+        }
+      }, 1000);
+    </script>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

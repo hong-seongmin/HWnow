@@ -14,8 +14,16 @@ import { initWebSocket } from './services/wailsEventService'
 import './App.css'
 
 function AppContent() {
+  console.log('[App] === APP CONTENT COMPONENT START ===');
+
   const { toasts, removeToast, showInfo } = useToast()
   const [showOnboarding, setShowOnboarding] = useState(false)
+
+  console.log('[App] AppContent component initialized:', {
+    toastsCount: toasts?.length || 0,
+    showOnboarding,
+    hasToastContext: !!removeToast && !!showInfo
+  });
 
   // 전역 단축키 활성화
   useAppShortcuts({

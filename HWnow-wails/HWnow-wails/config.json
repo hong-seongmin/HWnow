@@ -4,7 +4,7 @@
     "host": "localhost"
   },
   "database": {
-    "filename": "monitoring.db"
+    "filename": "hwmonitor.db"
   },
   "monitoring": {
     "interval_seconds": 60,
