@@ -1,0 +1,49 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Direct Test</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        .success { color: green; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>Direct HTML Test</h1>
+    <div id="results"></div>
+    <script type="module">
+        const results = document.getElementById('results');
+        
+        try {
+            results.innerHTML += '<p class="success">✅ JavaScript is working</p>';
+            
+            // Test React import
+            import('http://localhost:5173/node_modules/.vite/deps/react.js?v=f7f7fb45')
+                .then(React => {
+                    results.innerHTML += '<p class="success">✅ React import successful</p>';
+                    console.log('React loaded:', React);
+                })
+                .catch(error => {
+                    results.innerHTML += '<p class="error">❌ React import failed: ' + error.message + '</p>';
+                    console.error('React import error:', error);
+                });
+            
+            // Test App import
+            import('http://localhost:5173/src/App.tsx')
+                .then(App => {
+                    results.innerHTML += '<p class="success">✅ App import successful</p>';
+                    console.log('App loaded:', App);
+                })
+                .catch(error => {
+                    results.innerHTML += '<p class="error">❌ App import failed: ' + error.message + '</p>';
+                    console.error('App import error:', error);
+                });
+                
+        } catch (error) {
+            results.innerHTML += '<p class="error">❌ Critical error: ' + error.message + '</p>';
+            console.error('Critical error:', error);
+        }
+    </script>
+</body>
+</html>
