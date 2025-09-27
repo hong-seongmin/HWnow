@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+﻿import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import type { Layout } from 'react-grid-layout';
 import type { Widget, WidgetType, Page, DashboardState, WidgetState, ResponsiveLayouts, Breakpoint } from './types';
@@ -11,7 +11,7 @@ import {
 import { getOptimalWidgetSize, WIDGET_SIZE_CONSTRAINTS } from '../utils/widgetSizeDefinitions';
 import { widgetLoadingLog, widgetOperationsLog } from '../utils/debugConfig';
 
-// Debounce ?�틸리티 ?�수
+// Debounce ?占쏀떥由ы떚 ?占쎌닔
 function debounce<T extends (...args: any[]) => void>(func: T, delay: number) {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   return function(this: ThisParameterType<T>, ...args: Parameters<T>) {
@@ -25,16 +25,39 @@ function debounce<T extends (...args: any[]) => void>(func: T, delay: number) {
 }
 
 const getUserId = (): string => {
-  // 모든 브라?��??�서 ?�일???�용??ID ?�용 (공통 ?�?�보??
+  // 紐⑤뱺 釉뚮씪?占쏙옙??占쎌꽌 ?占쎌씪???占쎌슜??ID ?占쎌슜 (怨듯넻 ?占?占쎈낫??
   return 'global-user';
 };
 
-// ?�젯 ?�태 비교�??�한 ?�시 ?�성 ?�수
+// ?占쎌젽 ?占쏀깭 鍮꾧탳占??占쏀븳 ?占쎌떆 ?占쎌꽦 ?占쎌닔
 const generateStateHash = (widgets: Widget[], layouts: Layout[]): string => {
+  const normalizePositions = (position?: Record<string, Layout>) => {
+    if (!position) {
+      return [];
+    }
+
+    return Object.entries(position)
+      .map(([breakpoint, layout]) => ({
+        breakpoint,
+        x: layout.x,
+        y: layout.y,
+        w: layout.w,
+        h: layout.h,
+        i: layout.i
+      }))
+      .sort((a, b) => a.breakpoint.localeCompare(b.breakpoint));
+  };
+
   const stateData = {
-    widgets: widgets.map(w => ({ i: w.i, type: w.type, config: w.config })),
+    widgets: widgets.map(w => ({
+      i: w.i,
+      type: w.type,
+      config: w.config,
+      positions: normalizePositions(w.position)
+    })),
     layouts: layouts.map(l => ({ i: l.i, x: l.x, y: l.y, w: l.w, h: l.h }))
   };
+
   return JSON.stringify(stateData);
 };
 
@@ -55,7 +78,7 @@ const defaultPage: Page = {
 };
 
 // Enhanced Dashboard Store with Wails integration
-// 추�? ?�태 ?�???�의
+// 異뷂옙? ?占쏀깭 ?占???占쎌쓽
 interface ExtendedDashboardState extends DashboardState {
   lastSavedHash: string | null;
   isAutosaving: boolean;
@@ -76,16 +99,16 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
       widgetLoadingLog('[WIDGET_INIT] Dashboard: ?? Starting dashboard initialization for user:', userId);
 
       try {
-        // ?�이지 목록 로드
+        // ?占쎌씠吏 紐⑸줉 濡쒕뱶
         const pageStates = await getPages(userId);
-        widgetLoadingLog('[WIDGET_INIT] Dashboard: ?�� Loaded pages from server:', pageStates?.length || 0);
+        widgetLoadingLog('[WIDGET_INIT] Dashboard: ?占쏙옙 Loaded pages from server:', pageStates?.length || 0);
         
         if (pageStates && pageStates.length > 0) {
-          // �??�이지???�젯?�을 로드
+          // 占??占쎌씠吏???占쎌젽?占쎌쓣 濡쒕뱶
           const pages: Page[] = [];
           
           for (const pageState of pageStates) {
-            widgetLoadingLog(`[WIDGET_INIT] Dashboard: ?�� Loading widgets for page ${pageState.pageId}...`);
+            widgetLoadingLog(`[WIDGET_INIT] Dashboard: ?占쏙옙 Loading widgets for page ${pageState.pageId}...`);
             const widgetStates = await getWidgets(userId, pageState.pageId);
             widgetLoadingLog(`[WIDGET_INIT] Dashboard: ??Loaded ${widgetStates.length} widgets for page ${pageState.pageId}`);
             
@@ -121,7 +144,7 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
                 }
               }
 
-              widgetLoadingLog(`[WIDGET_INIT] Dashboard: ?�️ Processing widget ${ws.widgetId} from database:`, {
+              widgetLoadingLog(`[WIDGET_INIT] Dashboard: ?占쏙툘 Processing widget ${ws.widgetId} from database:`, {
                 type: ws.widgetType,
                 hasConfig: !!ws.config,
                 hasLayout: !!ws.layout,
@@ -141,18 +164,18 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
                 positionBreakpoints: Object.keys(layoutData)
               });
 
-              // Get widget-type-specific default size instead of hardcoded 6×2
+              // Get widget-type-specific default size instead of hardcoded 6횞2
               const [defaultWidth, defaultHeight] = getOptimalWidgetSize(ws.widgetType, 'lg');
 
               // Get minimum constraints for validation
               const constraints = WIDGET_SIZE_CONSTRAINTS[ws.widgetType];
               const [minWidth, minHeight] = constraints?.min || [defaultWidth, defaultHeight];
 
-              widgetLoadingLog(`[WIDGET_INIT] Dashboard: ?�� Processing widget from DB:`, {
+              widgetLoadingLog(`[WIDGET_INIT] Dashboard: ?占쏙옙 Processing widget from DB:`, {
                 widgetId: ws.widgetId,
                 type: ws.widgetType,
-                expectedDefault: `${defaultWidth}×${defaultHeight}`,
-                minConstraints: `${minWidth}×${minHeight}`,
+                expectedDefault: `${defaultWidth}횞${defaultHeight}`,
+                minConstraints: `${minWidth}횞${minHeight}`,
                 rawLayoutData: Object.keys(layoutData).length > 0 ? layoutData : 'empty'
               });
 
@@ -176,8 +199,8 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
 
                 widgetLoadingLog(`[WIDGET_INIT] Dashboard: ??Loaded responsive ${ws.widgetType} widget:`, {
                   widgetId: ws.widgetId,
-                  dbSize: lgLayout.w && lgLayout.h ? `${lgLayout.w}×${lgLayout.h}` : 'missing',
-                  finalSize: `${width}×${height}`,
+                  dbSize: lgLayout.w && lgLayout.h ? `${lgLayout.w}횞${lgLayout.h}` : 'missing',
+                  finalSize: `${width}횞${height}`,
                   usedDefault: !lgLayout.w || !lgLayout.h,
                   corrected: width !== (lgLayout.w ?? defaultWidth) || height !== (lgLayout.h ?? defaultHeight)
                 });
@@ -196,15 +219,15 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
 
                 widgetLoadingLog(`[WIDGET_INIT] Dashboard: ??Loaded legacy ${ws.widgetType} widget:`, {
                   widgetId: ws.widgetId,
-                  dbSize: layoutData.w && layoutData.h ? `${layoutData.w}×${layoutData.h}` : 'missing',
-                  finalSize: `${width}×${height}`,
+                  dbSize: layoutData.w && layoutData.h ? `${layoutData.w}횞${layoutData.h}` : 'missing',
+                  finalSize: `${width}횞${height}`,
                   usedDefault: !layoutData.w || !layoutData.h,
                   corrected: width !== (layoutData.w ?? defaultWidth) || height !== (layoutData.h ?? defaultHeight)
                 });
               }
             });
 
-            widgetLoadingLog(`[WIDGET_INIT] Dashboard: ?�� Page processing completed:`, {
+            widgetLoadingLog(`[WIDGET_INIT] Dashboard: ?占쏙옙 Page processing completed:`, {
               pageId: pageState.pageId,
               pageName: pageState.pageName,
               totalWidgets: widgets.length,
@@ -223,7 +246,7 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
               responsiveLayouts,
             };
 
-            widgetLoadingLog(`[WIDGET_INIT] Dashboard: ?�� Adding page to pages array:`, {
+            widgetLoadingLog(`[WIDGET_INIT] Dashboard: ?占쏙옙 Adding page to pages array:`, {
               pageId: pageToAdd.id,
               widgetCount: pageToAdd.widgets.length,
               layoutCount: pageToAdd.layouts.length
@@ -232,13 +255,13 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
             pages.push(pageToAdd);
           }
           
-          // 초기 ?�태 ?�시 계산
+          // 珥덇린 ?占쏀깭 ?占쎌떆 怨꾩궛
           const initialHash = pages.length > 0 ? generateStateHash(pages[0].widgets, pages[0].layouts) : null;
           widgetLoadingLog(`[WIDGET_INIT] Dashboard: ??Dashboard initialization completed successfully with ${pages.length} pages`);
           widgetLoadingLog(`[WIDGET_INIT] Dashboard: Setting store state with ${pages[0]?.widgets?.length || 0} widgets in active page`);
 
           // Final state before setting
-          widgetLoadingLog(`[WIDGET_INIT] Dashboard: ?�� Final state before store update:`, {
+          widgetLoadingLog(`[WIDGET_INIT] Dashboard: ?占쏙옙 Final state before store update:`, {
             pagesCount: pages.length,
             firstPageWidgets: pages[0]?.widgets?.length || 0,
             firstPageLayouts: pages[0]?.layouts?.length || 0,
@@ -249,10 +272,10 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
 
           set({ pages, activePageIndex: 0, isInitialized: true, lastSavedHash: initialHash });
 
-          widgetLoadingLog(`[WIDGET_INIT] Dashboard: ?�� Store state updated successfully`);
+          widgetLoadingLog(`[WIDGET_INIT] Dashboard: ?占쏙옙 Store state updated successfully`);
         } else {
-          // ?�이지가 ?�으�?기본 ?�이지 ?�성
-          widgetLoadingLog('[WIDGET_INIT] Dashboard: ?�� No pages found, creating default page');
+          // ?占쎌씠吏媛 ?占쎌쑝占?湲곕낯 ?占쎌씠吏 ?占쎌꽦
+          widgetLoadingLog('[WIDGET_INIT] Dashboard: ?占쏙옙 No pages found, creating default page');
           const initialHash = generateStateHash(defaultPage.widgets, defaultPage.layouts);
           set({ pages: [defaultPage], activePageIndex: 0, isInitialized: true, lastSavedHash: initialHash });
         }
@@ -260,9 +283,9 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
       } catch (error) {
         widgetLoadingLog("[WIDGET_INIT] Dashboard: ??Failed to initialize dashboard from server", error);
 
-        // ?�버 ?�이??로드 ?�패 ??기본 ?�이지�?초기??
-        // localStorage 백업?� ?�용?��? ?�아 ?�이???��???보장
-        widgetLoadingLog("[WIDGET_INIT] Dashboard: ?�️ Server data unavailable, initializing with default page");
+        // ?占쎈쾭 ?占쎌씠??濡쒕뱶 ?占쏀뙣 ??湲곕낯 ?占쎌씠吏占?珥덇린??
+        // localStorage 諛깆뾽?占??占쎌슜?占쏙옙? ?占쎌븘 ?占쎌씠???占쏙옙???蹂댁옣
+        widgetLoadingLog("[WIDGET_INIT] Dashboard: ?占쏙툘 Server data unavailable, initializing with default page");
         const fallbackHash = generateStateHash(defaultPage.widgets, defaultPage.layouts);
         set({ pages: [defaultPage], activePageIndex: 0, isInitialized: true, lastSavedHash: fallbackHash });
       }
@@ -276,13 +299,13 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
       try {
         await createPage(userId, pageId, pageName);
         
-        // ?�버 ?�성 ?�공 ??로컬 ?�태 ?�데?�트
+        // ?占쎈쾭 ?占쎌꽦 ?占쎄났 ??濡쒖뺄 ?占쏀깭 ?占쎈뜲?占쏀듃
         const newPage = createNewPage(pageName);
         newPage.id = pageId;
         
         set(state => ({
           pages: [...state.pages, newPage],
-          activePageIndex: state.pages.length // ???�이지�??�환
+          activePageIndex: state.pages.length // ???占쎌씠吏占??占쏀솚
         }));
       } catch (error) {
         console.error('Failed to create page:', error);
@@ -293,7 +316,7 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
       const userId = getUserId();
       const { pages, activePageIndex } = get();
       
-      // 마�?�??�이지????��?????�음
+      // 留덌옙?占??占쎌씠吏????占쏙옙?????占쎌쓬
       if (pages.length <= 1) {
         console.warn('Cannot delete the last page');
         return;
@@ -302,14 +325,14 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
       try {
         await deletePage(userId, pageId);
         
-        // ?�버 ??�� ?�공 ??로컬 ?�태 ?�데?�트
+        // ?占쎈쾭 ??占쏙옙 ?占쎄났 ??濡쒖뺄 ?占쏀깭 ?占쎈뜲?占쏀듃
         const pageIndex = pages.findIndex(p => p.id === pageId);
         if (pageIndex === -1) return;
         
         const newPages = pages.filter(p => p.id !== pageId);
         let newActiveIndex = activePageIndex;
         
-        // ??��???�이지가 ?�재 ?�성 ?�이지?�거??그보???�에 ?�으�??�덱??조정
+        // ??占쏙옙???占쎌씠吏媛 ?占쎌옱 ?占쎌꽦 ?占쎌씠吏?占쎄굅??洹몃낫???占쎌뿉 ?占쎌쑝占??占쎈뜳??議곗젙
         if (pageIndex <= activePageIndex && newActiveIndex > 0) {
           newActiveIndex = newActiveIndex - 1;
         }
@@ -325,7 +348,7 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
 
     setActivePageIndex: (index) => {
       set({ activePageIndex: index });
-      // ?�이지 ?�환?� ?�태 ?�?�할 ?�요 ?�음
+      // ?占쎌씠吏 ?占쏀솚?占??占쏀깭 ?占?占쏀븷 ?占쎌슂 ?占쎌쓬
     },
     
     updatePageName: async (pageId: string, name: string) => {
@@ -334,7 +357,7 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
       try {
         await updatePageName(userId, pageId, name);
 
-        // ?�버 ?�데?�트 ?�공 ??로컬 ?�태 ?�데?�트
+        // ?占쎈쾭 ?占쎈뜲?占쏀듃 ?占쎄났 ??濡쒖뺄 ?占쏀깭 ?占쎈뜲?占쏀듃
         set(state => ({
           pages: state.pages.map(page =>
             page.id === pageId ? { ...page, name } : page
@@ -470,6 +493,45 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
 
       set((state) => {
         const activePage = state.pages[state.activePageIndex];
+        const sanitizedLayout: Layout = { ...layoutItem, i: widgetId };
+        const existingResponsiveLayouts = activePage.responsiveLayouts || {};
+        const breakpointLayouts = existingResponsiveLayouts[breakpoint] || [];
+        const updatedBreakpointLayouts = [
+          ...breakpointLayouts.filter(layout => layout.i !== widgetId),
+          sanitizedLayout
+        ];
+
+        let updatedLegacyLayouts = activePage.layouts;
+        if (breakpoint === 'lg') {
+          let legacyFound = false;
+          updatedLegacyLayouts = activePage.layouts.map(layout => {
+            if (layout.i === widgetId) {
+              legacyFound = true;
+              return {
+                ...layout,
+                x: sanitizedLayout.x,
+                y: sanitizedLayout.y,
+                w: sanitizedLayout.w,
+                h: sanitizedLayout.h
+              };
+            }
+            return layout;
+          });
+
+          if (!legacyFound) {
+            updatedLegacyLayouts = [
+              ...updatedLegacyLayouts,
+              {
+                i: widgetId,
+                x: sanitizedLayout.x,
+                y: sanitizedLayout.y,
+                w: sanitizedLayout.w,
+                h: sanitizedLayout.h
+              }
+            ];
+          }
+        }
+
         const updatedPage = {
           ...activePage,
           widgets: activePage.widgets.map((widget) => {
@@ -477,10 +539,8 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
               const currentPosition = widget.position || {};
               const updatedPosition = {
                 ...currentPosition,
-                [breakpoint]: layoutItem
+                [breakpoint]: sanitizedLayout
               };
-
-              // Widget position updated
 
               return {
                 ...widget,
@@ -489,6 +549,11 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
             }
             return widget;
           }),
+          responsiveLayouts: {
+            ...existingResponsiveLayouts,
+            [breakpoint]: updatedBreakpointLayouts
+          },
+          layouts: updatedLegacyLayouts
         };
         const newPages = [...state.pages];
         newPages[state.activePageIndex] = updatedPage;
@@ -544,11 +609,11 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
         await saveWidgets(widgetStates);
         // State saved to server successfully
         
-        // ?�???�공 ???�시 ?�데?�트
+        // ?占???占쎄났 ???占쎌떆 ?占쎈뜲?占쏀듃
         const currentHash = generateStateHash(activePage.widgets, activePage.layouts);
         set({ lastSavedHash: currentHash });
         
-        // localStorage 백업 ?�거 - ?�버 ?�이?�만 ?�뢰?�여 ?��???보장
+        // localStorage 諛깆뾽 ?占쎄굅 - ?占쎈쾭 ?占쎌씠?占쎈쭔 ?占쎈ː?占쎌뿬 ?占쏙옙???蹂댁옣
         
       } catch (err) {
         console.error("Failed to save state to server:", err);
@@ -625,10 +690,10 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
           console.error("Failed to save state to server:", err);
           set({ isAutosaving: false });
         });
-    }, 1500), // 1.5�??�바?�스
+    }, 1500), // 1.5占??占쎈컮?占쎌뒪
 
     resetState: () => {
-      // ?�버???�이?�도 ??��?�는 로직???�요?????��?�? ?�기?�는 ?�론?�엔??초기?�만 진행
+      // ?占쎈쾭???占쎌씠?占쎈룄 ??占쏙옙?占쎈뒗 濡쒖쭅???占쎌슂?????占쏙옙?占? ?占쎄린?占쎈뒗 ?占쎈줎?占쎌뿏??珥덇린?占쎈쭔 吏꾪뻾
       set({ 
         pages: [defaultPage], 
         activePageIndex: 0, 
@@ -648,3 +713,5 @@ export const useDashboardStore = create<ExtendedDashboardState>()(
   storeName: 'dashboard'
 }
 )); 
+
+
