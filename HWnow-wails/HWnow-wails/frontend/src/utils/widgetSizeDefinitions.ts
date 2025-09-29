@@ -79,13 +79,13 @@ export const WIDGET_SIZE_CONSTRAINTS: Record<WidgetType, {
   'net_sent': { min: [4, 3], max: [10, 7] },      // Increased from [3,2] to [4,3]
   'net_recv': { min: [4, 3], max: [10, 7] },      // Increased from [3,2] to [4,3]
   'gpu': { min: [4, 3], max: [10, 7] },           // Increased from [3,2] to [4,3]
-  'gpu_process': { min: [8, 5], max: [12, 8] },   // Increased from [6,4] to [8,5]
+  'gpu_process': { min: [4, 3], max: [12, 8] },   // Increased from [6,4]
   'system_uptime': { min: [3, 2], max: [6, 4] },  // Increased from [2,1] to [3,2]
   'process_monitor': { min: [6, 4], max: [12, 8] }, // Increased from [4,3] to [6,4]
   'battery': { min: [3, 2], max: [5, 4] },        // Increased from [2,1] to [3,2]
   'network_status': { min: [3, 2], max: [6, 4] }, // Increased from [2,1] to [3,2]
   'memory_detail': { min: [6, 4], max: [12, 7] }, // Increased from [4,3] to [6,4]
-  'system_log': { min: [6, 4], max: [12, 8] }     // Increased from [4,3] to [6,4]
+  'system_log': { min: [4, 3], max: [12, 8] }     // Increased from [4,3] to [6,4]
 };
 
 /**
