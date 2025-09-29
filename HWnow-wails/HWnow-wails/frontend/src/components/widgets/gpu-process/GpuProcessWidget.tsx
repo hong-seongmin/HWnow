@@ -1,4 +1,4 @@
-import React, { memo, useCallback } from 'react';
+import React, { memo, useCallback, useRef } from 'react';
 import { SettingsModal } from '../../common/SettingsModal';
 import { GpuProcessSettings } from '../settings/GpuProcessSettings';
 import { useConfirmDialog } from '../../common/ConfirmDialog';
@@ -10,6 +10,7 @@ import { GPUProcessErrorBoundary } from './ErrorBoundary';
 import { ProcessTable } from './ProcessTable';
 import { useWidgetState, useProcessOperations } from './WidgetStateManager';
 import { ProcessOperationsHandler } from './ProcessOperations';
+import { useWidgetWidth, calculateMaxProcessNameLength } from './useWidgetWidth';
 import '../widget.css';
 
 interface WidgetProps {
@@ -32,6 +33,11 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
 
   // Process operations handler
   const processOpsHandler = ProcessOperationsHandler.getInstance();
+
+  // Widget width detection for responsive process name display
+  const widgetRef = useRef<HTMLDivElement>(null);
+  const widgetWidth = useWidgetWidth(widgetRef);
+  const maxProcessNameLength = calculateMaxProcessNameLength(widgetWidth);
 
   // Event handlers
   const handleSettingsClick = useCallback((e: React.MouseEvent) => {
@@ -150,7 +156,7 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
   const isAnyOperationInProgress = processOpsHandler.getOperationInProgressCount() > 0;
 
   return (
-    <div className={`widget widget-gpu-process ${isExpanded ? 'expanded' : ''}`}
+    <div ref={widgetRef} className={`widget widget-gpu-process ${isExpanded ? 'expanded' : ''}`}
          role="region"
          aria-label="GPU Process Monitor">
 
@@ -277,6 +283,7 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
           onSelectAll={actions.handleSelectAll}
           onTerminateProcess={handleTerminateProcess}
           className={`${!state.isConnected ? 'disconnected' : ''}`}
+          maxProcessNameLength={maxProcessNameLength}
         />
       </div>
 
