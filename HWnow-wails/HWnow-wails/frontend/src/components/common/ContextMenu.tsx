@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useHistoryStore } from '../../stores/historyStore';
 import { AddWidgetCommand } from '../../stores/commands';
 import { useToast } from '../../contexts/ToastContext';
@@ -215,7 +215,9 @@ interface ContextMenuProps {
 
 export const ContextMenu: React.FC<ContextMenuProps> = ({ isOpen, position, onClose }) => {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [submenuPosition, setSubmenuPosition] = useState<{[key: string]: {left: number, top: number, direction: 'left' | 'right'}}>({});
   const menuRef = useRef<HTMLDivElement>(null);
+  const submenuRefs = useRef<{[key: string]: HTMLDivElement | null}>({});
   const timeoutRef = useRef<number | null>(null);
   const { actions: historyActions } = useHistoryStore();
   const { showSuccess, showError } = useToast();
@@ -242,7 +244,9 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ isOpen, position, onCl
 
   useEffect(() => {
     if (!isOpen) {
+      console.log('🔄 [ContextMenu] Menu closed - resetting all state');
       setActiveCategory(null);
+      setSubmenuPosition({}); // 메뉴가 닫힐 때 모든 위치 상태 초기화
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
@@ -285,16 +289,54 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ isOpen, position, onCl
     }
   };
 
-  const handleCategoryEnter = (category: string) => {
+  const handleCategoryEnter = (category: string, event: React.MouseEvent<HTMLDivElement>) => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
+
+    console.log('🖱️ [ContextMenu] Category hover:', category);
     setActiveCategory(category);
+
+    // 타이밍 문제 해결: DOM 업데이트 후 위치 계산
+    // setTimeout을 사용하여 다음 이벤트 루프에서 계산
+    setTimeout(() => {
+      // DOM이 완전히 업데이트되었는지 확인
+      if (!menuRef.current) {
+        console.warn('⚠️ [ContextMenu] menuRef not ready, retrying...');
+        setTimeout(() => {
+          if (menuRef.current) {
+            const categoryElement = event.currentTarget;
+            const position = getSubmenuPosition(category, categoryElement);
+            setSubmenuPosition(prev => ({
+              ...prev,
+              [category]: position
+            }));
+          }
+        }, 10);
+        return;
+      }
+
+      const categoryElement = event.currentTarget;
+      const position = getSubmenuPosition(category, categoryElement);
+
+      console.log('💾 [ContextMenu] Setting submenu position for', category, ':', position);
+      setSubmenuPosition(prev => {
+        const newState = {
+          ...prev,
+          [category]: position
+        };
+        console.log('💾 [ContextMenu] New submenu position state:', newState);
+        return newState;
+      });
+    }, 0);
   };
 
   const handleCategoryLeave = () => {
     timeoutRef.current = setTimeout(() => {
+      console.log('🔄 [ContextMenu] Clearing active category and submenu positions');
       setActiveCategory(null);
+      // 상태 초기화: 이전 계산 결과가 새로운 계산을 방해하지 않도록
+      setSubmenuPosition({});
     }, 200);
   };
 
@@ -335,6 +377,69 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ isOpen, position, onCl
     return { top, left };
   };
 
+  const getSubmenuPosition = (category: string, categoryElement: HTMLElement): {left: number, top: number, direction: 'left' | 'right'} => {
+    if (!menuRef.current) return { left: 0, top: 0, direction: 'right' };
+
+    const categoryRect = categoryElement.getBoundingClientRect();
+    const menuRect = menuRef.current.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    // 서브메뉴 예상 크기 (실제 렌더링 전이므로 추정값 사용)
+    const submenuWidth = 280; // CSS의 min-width와 동일
+    const submenuHeight = Math.min(widgetsByCategory[category]?.length * 60 || 200, 400); // 항목당 대략 60px
+
+    let left = 0;
+    let top = 0;
+    let direction: 'left' | 'right' = 'right';
+
+    // 1. 오른쪽에 공간이 있는지 확인 (우선순위)
+    const rightSpace = viewportWidth - categoryRect.right;
+    const leftSpace = categoryRect.left;
+
+    console.log('🔍 [ContextMenu] Submenu position calculation for category:', category);
+    console.log('📏 Viewport width:', viewportWidth);
+    console.log('📏 Category rect:', { left: categoryRect.left, right: categoryRect.right, top: categoryRect.top, bottom: categoryRect.bottom });
+    console.log('📏 Right space:', rightSpace, 'Left space:', leftSpace);
+    console.log('📏 Required submenu width:', submenuWidth);
+
+    if (rightSpace >= submenuWidth) {
+      // 오른쪽으로 펼침
+      direction = 'right';
+      console.log('✅ Direction: RIGHT (sufficient right space)');
+    } else if (leftSpace >= submenuWidth) {
+      // 왼쪽으로 펼침
+      direction = 'left';
+      console.log('✅ Direction: LEFT (insufficient right space, sufficient left space)');
+    } else {
+      // 공간이 부족한 경우, 더 넓은 쪽으로
+      if (rightSpace > leftSpace) {
+        direction = 'right';
+        console.log('✅ Direction: RIGHT (both insufficient, but right space is larger)');
+      } else {
+        direction = 'left';
+        console.log('✅ Direction: LEFT (both insufficient, but left space is larger)');
+      }
+    }
+
+    // CSS에서 처리하므로 left는 상대적 위치만 필요
+    left = 0;
+
+    // 세로 위치 조정
+    top = 0; // 기본적으로 카테고리와 같은 높이에서 시작
+
+    // 서브메뉴가 화면 아래로 벗어나는 경우 위로 조정
+    const submenuBottom = categoryRect.top + submenuHeight;
+    if (submenuBottom > viewportHeight) {
+      const overflow = submenuBottom - viewportHeight;
+      top = Math.max(-categoryRect.top, -overflow);
+      console.log('📏 Vertical adjustment: top =', top);
+    }
+
+    console.log('🎯 Final position:', { left, top, direction });
+    return { left, top, direction };
+  };
+
   if (!isOpen) return null;
 
   const menuPosition = getMenuPosition();
@@ -359,7 +464,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ isOpen, position, onCl
           <div
             key={category}
             className="context-menu-category"
-            onMouseEnter={() => handleCategoryEnter(category)}
+            onMouseEnter={(e) => handleCategoryEnter(category, e)}
             onMouseLeave={handleCategoryLeave}
           >
             <div className="context-menu-category-header">
@@ -377,35 +482,52 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ isOpen, position, onCl
               </svg>
             </div>
             
-            {activeCategory === category && widgetsByCategory[category] && (
-              <div 
-                className="context-menu-submenu"
-                onMouseEnter={handleSubmenuEnter}
-                onMouseLeave={handleSubmenuLeave}
-              >
-                {widgetsByCategory[category].map((widget) => {
-                  if (category === 'System Info') {
-                    console.log(`Rendering ${category} widget:`, widget.type, widget.label);
-                  }
-                  return (
-                    <button
-                      key={widget.type}
-                      className="context-menu-item"
-                      onClick={() => handleAddWidget(widget.type, widget.label)}
-                      title={widget.description}
-                    >
-                    <div className="context-menu-item-icon">
-                      {widget.icon}
-                    </div>
-                    <div className="context-menu-item-content">
-                      <span className="context-menu-item-label">{widget.label}</span>
-                      <span className="context-menu-item-description">{widget.description}</span>
-                    </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+{useMemo(() => {
+              if (activeCategory !== category || !widgetsByCategory[category]) return null;
+
+              const direction = submenuPosition[category]?.direction || 'right';
+              const cssClass = `context-menu-submenu ${direction === 'left' ? 'submenu-left' : 'submenu-right'}`;
+              const topPosition = submenuPosition[category]?.top || 0;
+
+              console.log('🎨 [ContextMenu] Rendering submenu for', category);
+              console.log('🎨 Direction:', direction, 'CSS class:', cssClass);
+              console.log('🎨 Top position:', topPosition);
+              console.log('🎨 Submenu position state:', submenuPosition[category]);
+
+              return (
+                <div
+                  ref={el => submenuRefs.current[category] = el}
+                  className={cssClass}
+                  style={{
+                    top: topPosition,
+                  }}
+                  onMouseEnter={handleSubmenuEnter}
+                  onMouseLeave={handleSubmenuLeave}
+                >
+                  {widgetsByCategory[category].map((widget) => {
+                    if (category === 'System Info') {
+                      console.log(`Rendering ${category} widget:`, widget.type, widget.label);
+                    }
+                    return (
+                      <button
+                        key={widget.type}
+                        className="context-menu-item"
+                        onClick={() => handleAddWidget(widget.type, widget.label)}
+                        title={widget.description}
+                      >
+                        <div className="context-menu-item-icon">
+                          {widget.icon}
+                        </div>
+                        <div className="context-menu-item-content">
+                          <span className="context-menu-item-label">{widget.label}</span>
+                          <span className="context-menu-item-description">{widget.description}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            }, [activeCategory, category, widgetsByCategory, submenuPosition, handleSubmenuEnter, handleSubmenuLeave])}
           </div>
         ))}
       </div>

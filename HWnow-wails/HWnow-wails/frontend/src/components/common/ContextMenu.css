@@ -63,8 +63,6 @@
 
 .context-menu-submenu {
   position: absolute;
-  left: 100%;
-  top: 0;
   min-width: 280px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -73,7 +71,24 @@
   backdrop-filter: blur(8px);
   z-index: 1001;
   overflow: hidden;
+}
+
+/* 기본 오른쪽 펼침 */
+.context-menu-submenu.submenu-right {
+  left: 100% !important;
+  right: auto !important;
+  top: 0;
   margin-left: -4px;
+  margin-right: 0;
+}
+
+/* 왼쪽 펼침 */
+.context-menu-submenu.submenu-left {
+  left: auto !important;
+  right: 100% !important;
+  top: 0;
+  margin-left: 0;
+  margin-right: -4px;
 }
 
 .context-menu-item {
