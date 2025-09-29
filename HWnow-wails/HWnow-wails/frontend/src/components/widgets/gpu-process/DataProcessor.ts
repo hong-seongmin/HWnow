@@ -42,31 +42,75 @@ export const getSafeGPUProcesses = (processes: unknown[]): GPUProcessData[] => {
 };
 
 export const abbreviateProcessName = (name: string, maxLength: number = 25): string => {
-  if (name.length <= maxLength) return name;
+  if (!name || name.length <= maxLength) return name;
 
-  // For file paths, try to show the filename
-  if (name.includes('\\') || name.includes('/')) {
-    const parts = name.split(/[\\\/]/);
+  // Clean up common prefixes first
+  let cleanName = name;
+
+  // Handle C:... pattern more aggressively
+  if (cleanName.startsWith("C:\\") && cleanName.includes("...\\")) {
+    // Extract just the filename after the ... pattern
+    const lastBackslashIndex = cleanName.lastIndexOf("\\");
+    if (lastBackslashIndex > -1) {
+      cleanName = cleanName.substring(lastBackslashIndex + 1);
+    }
+  }
+  // Remove common Windows system paths
+  const commonPrefixes = [
+    'C:\\Windows\\System32\\',
+    'C:\\Windows\\SysWOW64\\',
+    'C:\\Program Files\\',
+    'C:\\Program Files (x86)\\',
+    'C:\\Users\\',
+    'C:\\',
+  ];
+
+  for (const prefix of commonPrefixes) {
+    if (cleanName.startsWith(prefix)) {
+      cleanName = cleanName.substring(prefix.length);
+      break;
+    }
+  }
+
+  // For file paths, extract the filename
+  if (cleanName.includes('\\') || cleanName.includes('/')) {
+    const parts = cleanName.split(/[\\\/]/);
     const fileName = parts[parts.length - 1];
 
-    if (fileName.length <= maxLength) {
-      return fileName;
-    } else if (fileName.includes('.')) {
-      const dotIndex = fileName.lastIndexOf('.');
-      if (dotIndex > 0) {
-        const nameWithoutExt = fileName.substring(0, dotIndex);
-        const extension = fileName.substring(dotIndex);
-        const maxNameLength = maxLength - extension.length - 3; // "..." 고려
+    if (fileName) {
+      cleanName = fileName;
+    }
+  }
 
-        if (maxNameLength > 0) {
+  // If still too long, handle executable names specially
+  if (cleanName.length > maxLength) {
+    if (cleanName.includes('.')) {
+      const dotIndex = cleanName.lastIndexOf('.');
+      if (dotIndex > 0) {
+        const nameWithoutExt = cleanName.substring(0, dotIndex);
+        const extension = cleanName.substring(dotIndex);
+
+        // For .exe files, prioritize showing the extension
+        if (extension.toLowerCase() === '.exe' || extension.toLowerCase() === '.app') {
+          const maxNameLength = maxLength - extension.length - 3; // "..." space
+          if (maxNameLength > 0) {
+            return nameWithoutExt.substring(0, maxNameLength) + '...' + extension;
+          }
+        }
+
+        // For other files, try to keep some of the name and extension
+        const maxNameLength = maxLength - extension.length - 3;
+        if (maxNameLength > 3) {
           return nameWithoutExt.substring(0, maxNameLength) + '...' + extension;
         }
       }
     }
+
+    // Default truncation for long names without extensions
+    return cleanName.substring(0, maxLength - 3) + '...';
   }
 
-  // Default truncation
-  return name.substring(0, maxLength - 3) + '...';
+  return cleanName;
 };
 
 export const filterProcesses = (

@@ -1,8 +1,45 @@
-export const formatProcessName = (name: string) => {
-  if (name.length > 20) {
-    return `${name.substring(0, 17)}...`;
+const ELLIPSIS = '...';
+
+const truncateMiddle = (value: string, maxLength: number) => {
+  if (value.length <= maxLength) {
+    return value;
   }
-  return name;
+
+  if (maxLength <= 3) {
+    return value.substring(0, maxLength);
+  }
+
+  const suffixLength = Math.max(1, Math.floor((maxLength - 3) / 2));
+  const prefixLength = Math.max(1, maxLength - suffixLength - 3);
+
+  return `${value.substring(0, prefixLength)}${ELLIPSIS}${value.substring(value.length - suffixLength)}`;
+};
+
+export const formatProcessName = (name: string, maxLength = 20) => {
+  if (!name) {
+    return '';
+  }
+
+  if (name.length <= maxLength) {
+    return name;
+  }
+
+  const lastBackslash = name.lastIndexOf('\\');
+  const lastSlash = name.lastIndexOf('/');
+  const lastSeparator = Math.max(lastBackslash, lastSlash);
+
+  if (lastSeparator !== -1) {
+    const suffix = name.substring(lastSeparator);
+    if (suffix.length + 3 >= maxLength) {
+      const allowedSuffix = Math.max(0, maxLength - 3);
+      return `${ELLIPSIS}${suffix.substring(Math.max(0, suffix.length - allowedSuffix))}`;
+    }
+
+    const prefixLength = maxLength - suffix.length - 3;
+    return `${name.substring(0, prefixLength)}${ELLIPSIS}${suffix}`;
+  }
+
+  return truncateMiddle(name, maxLength);
 };
 
 export const getRelativeTimeString = (timestamp: number) => {
@@ -51,7 +88,7 @@ export const getProcessTypeIcon = (type: string, processName?: string) => {
         lowerName.includes('valorant') ||
         lowerName.includes('lol')
       ) {
-        return '🎮';
+        return '[GAME]';
       }
       if (
         lowerName.includes('blender') ||
@@ -60,7 +97,7 @@ export const getProcessTypeIcon = (type: string, processName?: string) => {
         lowerName.includes('cinema4d') ||
         lowerName.includes('houdini')
       ) {
-        return '🧊';
+        return '[GPU]';
       }
       if (
         lowerName.includes('premiere') ||
@@ -70,7 +107,7 @@ export const getProcessTypeIcon = (type: string, processName?: string) => {
         lowerName.includes('handbrake') ||
         lowerName.includes('obs')
       ) {
-        return '🎞️';
+        return '[EDIT]';
       }
       if (
         lowerName.includes('photoshop') ||
@@ -79,9 +116,9 @@ export const getProcessTypeIcon = (type: string, processName?: string) => {
         lowerName.includes('krita') ||
         lowerName.includes('designer')
       ) {
-        return '🎨';
+        return '[ART]';
       }
-      return '🖥️';
+      return '[SYS]';
 
     case 'compute':
     case 'c':
@@ -96,10 +133,10 @@ export const getProcessTypeIcon = (type: string, processName?: string) => {
         lowerName.includes('nvidia-ml') ||
         lowerName.includes('triton')
       ) {
-        return '🧠';
+        return '[AI]';
       }
       if (lowerName.includes('blender') || lowerName.includes('cycles') || lowerName.includes('optix')) {
-        return '🧊';
+        return '[GPU]';
       }
       if (
         lowerName.includes('mining') ||
@@ -108,41 +145,41 @@ export const getProcessTypeIcon = (type: string, processName?: string) => {
         lowerName.includes('bitcoin') ||
         lowerName.includes('crypto')
       ) {
-        return '⛏️';
+        return '[MINE]';
       }
       if (
         lowerName.includes('folding') ||
         lowerName.includes('boinc') ||
         lowerName.includes('seti')
       ) {
-        return '🧬';
+        return '[SCI]';
       }
       if (
         lowerName.includes('password') ||
         lowerName.includes('hashcat') ||
         lowerName.includes('john')
       ) {
-        return '🧨';
+        return '[LAB]';
       }
-      return '🖥️';
+      return '[SYS]';
 
     case 'mixed':
     case 'multi':
-      return '🔁';
+      return '[SYNC]';
 
     case 'copy':
     case 'dma':
-      return '📥';
+      return '[QUEUE]';
 
     case 'encode':
     case 'decoder':
     case 'nvenc':
     case 'nvdec':
-      return '🎬';
+      return '[MEDIA]';
 
     case 'display':
     case 'overlay':
-      return '🖼️';
+      return '[IMG]';
 
     default:
       if (
@@ -152,7 +189,7 @@ export const getProcessTypeIcon = (type: string, processName?: string) => {
         lowerName.includes('browser') ||
         lowerName.includes('webkit')
       ) {
-        return '🌐';
+        return '[WEB]';
       }
       if (
         lowerName.includes('discord') ||
@@ -161,7 +198,7 @@ export const getProcessTypeIcon = (type: string, processName?: string) => {
         lowerName.includes('skype') ||
         lowerName.includes('slack')
       ) {
-        return '💬';
+        return '[CHAT]';
       }
       if (
         lowerName.includes('vlc') ||
@@ -170,7 +207,7 @@ export const getProcessTypeIcon = (type: string, processName?: string) => {
         lowerName.includes('spotify') ||
         lowerName.includes('youtube')
       ) {
-        return '🎧';
+        return '[AUDIO]';
       }
       if (
         lowerName.includes('nvidia') ||
@@ -179,7 +216,7 @@ export const getProcessTypeIcon = (type: string, processName?: string) => {
         lowerName.includes('driver') ||
         lowerName.includes('service')
       ) {
-        return '🛡️';
+        return '[SEC]';
       }
       if (
         lowerName.includes('dwm') ||
@@ -187,9 +224,9 @@ export const getProcessTypeIcon = (type: string, processName?: string) => {
         lowerName.includes('x11') ||
         lowerName.includes('wayland')
       ) {
-        return '🪟';
+        return '[WIN]';
       }
-      return '⚙️';
+      return '[CFG]';
   }
 };
 

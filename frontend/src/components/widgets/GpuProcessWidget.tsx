@@ -21,6 +21,28 @@ interface WidgetProps {
   onExpand?: () => void;
 }
 
+const APPROXIMATE_PROCESS_NAME_CHAR_WIDTH = 7;
+const PROCESS_NAME_PADDING_PX = 16;
+const MIN_PROCESS_NAME_CHAR_LIMIT = 4;
+const MAX_PROCESS_NAME_CHAR_LIMIT = 120;
+
+const getProcessNameCharacterLimit = (size: string) => {
+  switch (size) {
+    case 'small':
+      return 18;
+    case 'medium':
+      return 24;
+    case 'large':
+      return 32;
+    case 'extra-large':
+      return 40;
+    case 'ultra-large':
+      return 50;
+    default:
+      return 24;
+  }
+};
+
 const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpanded = false, onExpand }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
@@ -45,13 +67,37 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
   // Widget sizing for dynamic item scaling
   const widgetRef = useRef<HTMLDivElement>(null);
   const [widgetSizeCategory, setWidgetSizeCategory] = useState<string>('medium');
+  const [processNameCharacterLimit, setProcessNameCharacterLimit] = useState<number>(getProcessNameCharacterLimit('medium'));
   
   const { showConfirm, ConfirmComponent } = useConfirmDialog();
   const { showProcessSuccess, showProcessError, showBulkProcessResult } = useToast();
   
   const gpuProcesses = useSystemResourceStore((state) => state.data.gpu_processes);
   const [componentMountTime] = useState(Date.now());
-  const [previousProcesses, setPreviousProcesses] = useState<typeof gpuProcesses>([]);
+  const computeProcessNameCharacterLimit = React.useCallback((categoryOverride?: string) => {
+    const widgetElement = widgetRef.current;
+    const targetCategory = categoryOverride ?? widgetSizeCategory;
+    const baseLimit = getProcessNameCharacterLimit(targetCategory);
+    let nextLimit = baseLimit;
+
+    if (widgetElement) {
+      const processNameElement =
+        widgetElement.querySelector<HTMLElement>('.process-item .process-name-text') ??
+        widgetElement.querySelector<HTMLElement>('.process-item .process-name') ??
+        widgetElement.querySelector<HTMLElement>('.process-name-header');
+
+      if (processNameElement) {
+        const width = processNameElement.getBoundingClientRect().width;
+        if (width > 0) {
+          const effectiveWidth = Math.max(0, width - PROCESS_NAME_PADDING_PX);
+          const widthBasedLimit = Math.floor(effectiveWidth / APPROXIMATE_PROCESS_NAME_CHAR_WIDTH);
+          nextLimit = Math.max(MIN_PROCESS_NAME_CHAR_LIMIT, Math.min(MAX_PROCESS_NAME_CHAR_LIMIT, widthBasedLimit));
+        }
+      }
+    }
+
+    setProcessNameCharacterLimit((prev) => (prev === nextLimit ? prev : nextLimit));
+  }, [widgetSizeCategory]);
 
   const {
     widget,
@@ -82,23 +128,23 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
   });
 
 
-  // 초기 로드 상태 관리
+  // 초기 로드 ?�태 관�?
   React.useEffect(() => {
     if (gpuProcesses.length > 0 || Date.now() - componentMountTime > 5000) {
       setIsInitialLoad(false);
     }
   }, [gpuProcesses]);
 
-  // 키보드 네비게이션 핸들링
+  // ?�보???�비게이???�들�?
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // 입력 필드나 다른 요소에 포커스가 있을 때는 무시
+      // ?�력 ?�드???�른 ?�소???�커?��? ?�을 ?�는 무시
       const target = event.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
         return;
       }
 
-      // 설정 모달이 열려있으면 무시
+      // ?�정 모달???�려?�으�?무시
       if (isSettingsOpen) {
         return;
       }
@@ -217,7 +263,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
       }
 
       if (handled) {
-        // 포커스가 위젯에 있는지 확인
+        // ?�커?��? ?�젯???�는지 ?�인
         const widgetElement = document.getElementById(`gpu-process-widget-${widgetId}`);
         if (widgetElement && !widgetElement.contains(document.activeElement)) {
           widgetElement.focus();
@@ -225,7 +271,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
       }
     };
 
-    // 마우스 클릭 시 키보드 네비게이션 모드 해제
+    // 마우???�릭 ???�보???�비게이??모드 ?�제
     const handleMouseDown = () => {
       setIsKeyboardNavigation(false);
     };
@@ -239,12 +285,12 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
     };
   }, [focusedRowIndex, selectedProcesses, isSettingsOpen, widgetId, sortedProcesses]);
 
-  // 포커스된 행이 변경될 때 해당 프로세스를 선택 (선택적)
+  // ?�커?�된 ?�이 변경될 ???�당 ?�로?�스�??�택 (?�택??
   React.useEffect(() => {
     if (isKeyboardNavigation && focusedRowIndex >= 0) {
       const processes = sortedProcesses;
       if (focusedRowIndex < processes.length) {
-        // 스크린 리더를 위한 aria-live 업데이트는 여기서 처리
+        // ?�크�?리더�??�한 aria-live ?�데?�트???�기??처리
       }
     }
   }, [focusedRowIndex, isKeyboardNavigation, sortedProcesses]);
@@ -252,48 +298,56 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
   // Widget size detection for dynamic item sizing
   useEffect(() => {
     const detectWidgetSize = () => {
-      if (widgetRef.current) {
-        const rect = widgetRef.current.getBoundingClientRect();
-        const height = rect.height;
-        
-        // Determine size category based on height
-        let category: string;
-        if (height < 300) {
-          category = 'small';
-        } else if (height < 500) {
-          category = 'medium';
-        } else if (height < 700) {
-          category = 'large';
-        } else if (height < 1000) {
-          category = 'extra-large';
-        } else {
-          category = 'ultra-large';
-        }
-        
-        if (category !== widgetSizeCategory) {
-          setWidgetSizeCategory(category);
-        }
+      if (!widgetRef.current) {
+        return;
       }
+
+      const rect = widgetRef.current.getBoundingClientRect();
+      const height = rect.height;
+
+      // Determine size category based on height
+      let category: string;
+      if (height < 300) {
+        category = 'small';
+      } else if (height < 500) {
+        category = 'medium';
+      } else if (height < 700) {
+        category = 'large';
+      } else if (height < 1000) {
+        category = 'extra-large';
+      } else {
+        category = 'ultra-large';
+      }
+
+      if (category !== widgetSizeCategory) {
+        setWidgetSizeCategory(category);
+      }
+
+      computeProcessNameCharacterLimit(category);
     };
-    
-    // Initial detection
+
     detectWidgetSize();
-    
-    // Set up resize observer for dynamic detection
-    const resizeObserver = new ResizeObserver(detectWidgetSize);
-    if (widgetRef.current) {
-      resizeObserver.observe(widgetRef.current);
+
+    if (!widgetRef.current || typeof ResizeObserver === 'undefined') {
+      return;
     }
-    
+
+    const resizeObserver = new ResizeObserver(() => detectWidgetSize());
+    resizeObserver.observe(widgetRef.current);
+
     return () => {
       resizeObserver.disconnect();
     };
-  }, [widgetSizeCategory]);
+  }, [widgetSizeCategory, computeProcessNameCharacterLimit]);
 
-  // 키보드 단축키 도움말 표시
+  useEffect(() => {
+    computeProcessNameCharacterLimit();
+  }, [sortedProcesses.length, computeProcessNameCharacterLimit]);
+
+  // ?�보???�축???��?�??�시
   const showKeyboardShortcutsHelp = () => {
     const shortcuts = [
-      '↑/↓: Navigate rows',
+      '???? Navigate rows',
       'Home/End: First/Last row',
       'Space/Enter: Select/Deselect process',
       'Ctrl+A: Select all processes',
@@ -308,7 +362,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
     showBulkProcessResult(0, 0, 'help', shortcuts, 8000);
   };
 
-  // 키보드 네비게이션을 위한 프로세스 선택 토글 함수
+  // ?�보???�비게이?�을 ?�한 ?�로?�스 ?�택 ?��? ?�수
   const toggleProcessSelection = (pid: number) => {
     const newSelected = new Set(selectedProcesses);
     if (newSelected.has(pid)) {
@@ -319,7 +373,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
     setSelectedProcesses(newSelected);
   };
 
-  // 키보드 네비게이션을 위한 프로세스 액션 핸들러
+  // ?�보???�비게이?�을 ?�한 ?�로?�스 ?�션 ?�들??
   const handleProcessAction = async (action: 'kill' | 'suspend' | 'resume' | 'priority', pids: number[], processNames: string[], priority?: string) => {
     if (isControlInProgress) return;
 
@@ -383,36 +437,36 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
         case 'kill':
           showConfirm({
             title: 'Process Termination',
-            message: `프로세스 "${processName}" (PID: ${pid})을(를) 종료하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`,
+            message: `?�로?�스 "${processName}" (PID: ${pid})??�? 종료?�시겠습?�까?\n\n???�업?� ?�돌�????�습?�다.`,
             type: 'danger',
-            icon: '🛑',
+            icon: '[X]',
             onConfirm: executeAction
           });
           break;
         case 'suspend':
           showConfirm({
             title: 'Process Suspension',
-            message: `프로세스 "${processName}" (PID: ${pid})을(를) 일시정지하시겠습니까?`,
+            message: `?�로?�스 "${processName}" (PID: ${pid})??�? ?�시?��??�시겠습?�까?`,
             type: 'warning',
-            icon: '⏸️',
+            icon: '[PAUSE]',
             onConfirm: executeAction
           });
           break;
         case 'resume':
           showConfirm({
             title: 'Process Resume',
-            message: `프로세스 "${processName}" (PID: ${pid})을(를) 재개하시겠습니까?`,
+            message: `?�로?�스 "${processName}" (PID: ${pid})??�? ?�개?�시겠습?�까?`,
             type: 'default',
-            icon: '▶️',
+            icon: '[RESUME]',
             onConfirm: executeAction
           });
           break;
         case 'priority':
           showConfirm({
             title: 'Process Priority Change',
-            message: `프로세스 "${processName}" (PID: ${pid})의 우선순위를 ${priority}로 변경하시겠습니까?`,
+            message: `?�로?�스 "${processName}" (PID: ${pid})???�선?�위�?${priority}�?변경하?�겠?�니�?`,
             type: 'warning',
-            icon: '⚡',
+            icon: '[!]',
             onConfirm: executeAction
           });
           break;
@@ -440,9 +494,9 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
 
   const resetToDefaults = () => {
     const { actions } = useDashboardStore.getState();
-    // 현재 설정을 완전히 초기화
+    // ?�재 ?�정???�전??초기??
     actions.updateWidgetConfig(widgetId, {
-      // GPU 프로세스 관련 설정만 초기화하고 다른 설정은 보존
+      // GPU ?�로?�스 관???�정�?초기?�하�??�른 ?�정?� 보존
       gpuProcessCount: undefined,
       gpuSortBy: undefined,
       gpuSortOrder: undefined,
@@ -472,29 +526,29 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
     const { actions } = useDashboardStore.getState();
     
     if (sortBy === newSortBy) {
-      // 같은 컬럼 클릭시 정렬 순서 변경
+      // 같�? 컬럼 ?�릭???�렬 ?�서 변�?
       const newSortOrder = sortOrder === 'desc' ? 'asc' : 'desc';
       actions.updateWidgetConfig(widgetId, { gpuSortOrder: newSortOrder });
     } else {
-      // 다른 컬럼 클릭시 해당 컬럼으로 정렬 변경
+      // ?�른 컬럼 ?�릭???�당 컬럼?�로 ?�렬 변�?
       actions.updateWidgetConfig(widgetId, { 
         gpuSortBy: newSortBy as SortKey,
-        gpuSortOrder: 'desc' // 새 컬럼은 기본적으로 내림차순
+        gpuSortOrder: 'desc' // ??컬럼?� 기본?�으�??�림차순
       });
     }
   };
 
   const getSortIcon = (columnKey: typeof sortBy) => {
     if (sortBy !== columnKey) return null;
-    return sortOrder === 'desc' ? '↓' : '↑';
+    return sortOrder === 'desc' ? '▼' : '▲';
   };
 
-  // 프로세스 선택 관련 핸들러들
+  // ?�로?�스 ?�택 관???�들?�들
   const handleProcessSelect = (pid: number, event: React.MouseEvent) => {
     event.stopPropagation();
     
     if (event.ctrlKey || event.metaKey) {
-      // Ctrl/Cmd + 클릭: 다중 선택
+      // Ctrl/Cmd + ?�릭: ?�중 ?�택
       const newSelected = new Set(selectedProcesses);
       if (newSelected.has(pid)) {
         newSelected.delete(pid);
@@ -503,17 +557,17 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
       }
       setSelectedProcesses(newSelected);
     } else {
-      // 일반 클릭: 단일 선택
+      // ?�반 ?�릭: ?�일 ?�택
       setSelectedProcesses(new Set([pid]));
     }
   };
 
   const handleSelectAll = () => {
     if (selectedProcesses.size === sortedProcesses.length) {
-      // 모든 프로세스가 선택된 경우 선택 해제
+      // 모든 ?�로?�스가 ?�택??경우 ?�택 ?�제
       setSelectedProcesses(new Set());
     } else {
-      // 모든 프로세스 선택
+      // 모든 ?�로?�스 ?�택
       const allPids = new Set(sortedProcesses.map(p => p.pid));
       setSelectedProcesses(allPids);
     }
@@ -523,7 +577,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
     setSelectedProcesses(new Set());
   };
 
-  // 컨텍스트 메뉴 핸들러들
+  // 컨텍?�트 메뉴 ?�들?�들
   const handleContextMenu = (e: React.MouseEvent, pid: number, processName: string) => {
     e.preventDefault();
     setContextMenu({
@@ -580,27 +634,27 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
         case 'kill':
           showConfirm({
             title: 'Process Termination',
-            message: `프로세스 "${processName}" (PID: ${pid})을(를) 종료하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`,
+            message: `?�로?�스 "${processName}" (PID: ${pid})??�? 종료?�시겠습?�까?\n\n???�업?� ?�돌�????�습?�다.`,
             type: 'danger',
-            icon: '🛑',
+            icon: '[X]',
             onConfirm: executeAction
           });
           break;
         case 'suspend':
           showConfirm({
             title: 'Process Suspension',
-            message: `프로세스 "${processName}" (PID: ${pid})을(를) 일시정지하시겠습니까?`,
+            message: `?�로?�스 "${processName}" (PID: ${pid})??�? ?�시?��??�시겠습?�까?`,
             type: 'warning',
-            icon: '⏸️',
+            icon: '[PAUSE]',
             onConfirm: executeAction
           });
           break;
         case 'resume':
           showConfirm({
             title: 'Process Resume',
-            message: `프로세스 "${processName}" (PID: ${pid})을(를) 재개하시겠습니까?`,
+            message: `?�로?�스 "${processName}" (PID: ${pid})??�? ?�개?�시겠습?�까?`,
             type: 'default',
-            icon: '▶️',
+            icon: '[RESUME]',
             onConfirm: executeAction
           });
           break;
@@ -608,9 +662,9 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
           if (!priority) return;
           showConfirm({
             title: 'Change Process Priority',
-            message: `프로세스 "${processName}" (PID: ${pid})의 우선순위를 ${priority.toUpperCase()}로 변경하시겠습니까?`,
+            message: `?�로?�스 "${processName}" (PID: ${pid})???�선?�위�?${priority.toUpperCase()}�?변경하?�겠?�니�?`,
             type: 'warning',
-            icon: '⚡',
+            icon: '[!]',
             onConfirm: executeAction
           });
           break;
@@ -621,7 +675,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
     }
   };
 
-  // 전역 클릭 이벤트로 컨텍스트 메뉴 숨기기
+  // ?�역 ?�릭 ?�벤?�로 컨텍?�트 메뉴 ?�기�?
   React.useEffect(() => {
     const handleGlobalClick = () => hideContextMenu();
     if (contextMenu.visible) {
@@ -630,15 +684,15 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
     }
   }, [contextMenu.visible]);
 
-  // 실시간 데이터 변경 감지 및 시각적 피드백
+  // ?�시�??�이??변�?감�? �??�각???�드�?
   React.useEffect(() => {
     if (gpuProcesses.length === 0) return;
     
-    // 업데이트 시간 및 표시기 설정
+    // ?�데?�트 ?�간 �??�시�??�정
     setLastUpdateTime(Date.now());
     setUpdateIndicatorVisible(true);
     
-    // 프로세스 변경사항 감지
+    // ?�로?�스 변경사??감�?
     const updates = new Map<number, { timestamp: number; changed: boolean }>();
     
     gpuProcesses.forEach(process => {
@@ -646,10 +700,10 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
       let hasChanges = false;
       
       if (!prevProcess) {
-        // 새로운 프로세스
+        // ?�로???�로?�스
         hasChanges = true;
       } else {
-        // 기존 프로세스의 변경사항 감지
+        // 기존 ?�로?�스??변경사??감�?
         hasChanges = 
           prevProcess.gpu_usage !== process.gpu_usage ||
           prevProcess.gpu_memory !== process.gpu_memory ||
@@ -666,7 +720,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
     setProcessUpdates(updates);
     setPreviousProcesses([...gpuProcesses]);
     
-    // 업데이트 표시기 자동 숨김
+    // ?�데?�트 ?�시�??�동 ?��?
     const hideTimer = setTimeout(() => {
       setUpdateIndicatorVisible(false);
     }, 1500);
@@ -674,34 +728,34 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
     return () => clearTimeout(hideTimer);
   }, [gpuProcesses]);
 
-  // WebSocket 연결 상태 모니터링 (개선된 버전)
+  // WebSocket ?�결 ?�태 모니?�링 (개선??버전)
   React.useEffect(() => {
-    // WebSocket 연결 상태 변경 콜백 등록
+    // WebSocket ?�결 ?�태 변�?콜백 ?�록
     const unsubscribe = onConnectionStatusChange((connected) => {
       setIsConnected(connected);
       if (!connected) {
       }
     });
     
-    // 정기적인 상태 확인 (추가적인 안전 장치)
+    // ?�기?�인 ?�태 ?�인 (추�??�인 ?�전 ?�치)
     const statusCheckInterval = setInterval(() => {
       const status = getWebSocketStatus();
       
-      // WebSocket 상태와 실제 데이터 수신 상태 비교
+      // WebSocket ?�태?� ?�제 ?�이???�신 ?�태 비교
       const now = Date.now();
       const timeSinceUpdate = now - lastUpdateTime;
       
       if (status.connected && timeSinceUpdate > 15000) {
         console.warn('WebSocket connected but no data received for 15 seconds');
-        // 배치 처리 강제 실행 시도
+        // 배치 처리 강제 ?�행 ?�도
         flushGPUProcessBatch();
       }
       
-      // 디버그 정보 출력 (개발 환경에서만)
+      // ?�버�??�보 출력 (개발 ?�경?�서�?
       if (import.meta.env.DEV) {
         console.debug('WebSocket Status:', status);
       }
-    }, 10000); // 10초마다 확인
+    }, 10000); // 10초마???�인
     
     return () => {
       unsubscribe();
@@ -709,7 +763,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
     };
   }, [lastUpdateTime]);
 
-  // 프로세스 변경 하이라이트 자동 제거
+  // ?�로?�스 변�??�이?�이???�동 ?�거
   React.useEffect(() => {
     const cleanupTimer = setTimeout(() => {
       const updatedMap = new Map();
@@ -724,7 +778,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
     return () => clearTimeout(cleanupTimer);
   }, [processUpdates]);
 
-  // 프로세스 제어 핸들러들
+  // ?�로?�스 ?�어 ?�들?�들
   const handleKillSelected = async () => {
     if (isControlInProgress) return;
     
@@ -752,15 +806,15 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
           }
         });
         
-        // 결과 메시지 표시
+        // 결과 메시지 ?�시
         showBulkProcessResult(successCount, failureCount, 'kill', errors);
         
-        // 선택 해제
+        // ?�택 ?�제
         setSelectedProcesses(new Set());
         
       } catch (error) {
         console.error('Unexpected error during process kill:', error);
-        showProcessError('선택된 프로세스들', 'kill', '예상치 못한 오류가 발생했습니다.');
+        showProcessError('?�택???�로?�스??, 'kill', '?�상�?못한 ?�류가 발생?�습?�다.');
       } finally {
         setIsControlInProgress(false);
       }
@@ -769,14 +823,14 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
     // Show confirmation dialog
     if (config.gpuRequireConfirmation !== false) { // default true
       const message = processesToKill.length === 1 
-        ? `프로세스 ${processesToKill[0]}을(를) 종료하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`
-        : `선택된 ${processesToKill.length}개 프로세스를 모두 종료하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`;
+        ? `?�로?�스 ${processesToKill[0]}??�? 종료?�시겠습?�까?\n\n???�업?� ?�돌�????�습?�다.`
+        : `?�택??${processesToKill.length}�??�로?�스�?모두 종료?�시겠습?�까?\n\n???�업?� ?�돌�????�습?�다.`;
         
       showConfirm({
         title: 'Kill Selected Processes',
         message,
         type: 'danger',
-        icon: '🛑',
+        icon: '[X]',
         onConfirm: executeKill
       });
     } else {
@@ -811,15 +865,15 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
           }
         });
         
-        // 결과 메시지 표시
+        // 결과 메시지 ?�시
         showBulkProcessResult(successCount, failureCount, 'suspend', errors);
         
-        // 선택 해제
+        // ?�택 ?�제
         setSelectedProcesses(new Set());
         
       } catch (error) {
         console.error('Unexpected error during process suspend:', error);
-        showProcessError('선택된 프로세스들', 'suspend', '예상치 못한 오류가 발생했습니다.');
+        showProcessError('?�택???�로?�스??, 'suspend', '?�상�?못한 ?�류가 발생?�습?�다.');
       } finally {
         setIsControlInProgress(false);
       }
@@ -828,14 +882,14 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
     // Show confirmation dialog
     if (config.gpuRequireConfirmation !== false) { // default true
       const message = processesToSuspend.length === 1 
-        ? `프로세스 ${processesToSuspend[0]}을(를) 일시정지하시겠습니까?`
-        : `선택된 ${processesToSuspend.length}개 프로세스를 모두 일시정지하시겠습니까?`;
+        ? `?�로?�스 ${processesToSuspend[0]}??�? ?�시?��??�시겠습?�까?`
+        : `?�택??${processesToSuspend.length}�??�로?�스�?모두 ?�시?��??�시겠습?�까?`;
         
       showConfirm({
         title: 'Suspend Selected Processes',
         message,
         type: 'warning',
-        icon: '⏸️',
+        icon: '[PAUSE]',
         onConfirm: executeSuspend
       });
     } else {
@@ -870,15 +924,15 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
           }
         });
         
-        // 결과 메시지 표시
+        // 결과 메시지 ?�시
         showBulkProcessResult(successCount, failureCount, 'resume', errors);
         
-        // 선택 해제
+        // ?�택 ?�제
         setSelectedProcesses(new Set());
         
       } catch (error) {
         console.error('Unexpected error during process resume:', error);
-        showProcessError('선택된 프로세스들', 'resume', '예상치 못한 오류가 발생했습니다.');
+        showProcessError('?�택???�로?�스??, 'resume', '?�상�?못한 ?�류가 발생?�습?�다.');
       } finally {
         setIsControlInProgress(false);
       }
@@ -887,14 +941,14 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
     // Show confirmation dialog
     if (config.gpuRequireConfirmation !== false) { // default true
       const message = processesToResume.length === 1 
-        ? `프로세스 ${processesToResume[0]}을(를) 재개하시겠습니까?`
-        : `선택된 ${processesToResume.length}개 프로세스를 모두 재개하시겠습니까?`;
+        ? `?�로?�스 ${processesToResume[0]}??�? ?�개?�시겠습?�까?`
+        : `?�택??${processesToResume.length}�??�로?�스�?모두 ?�개?�시겠습?�까?`;
         
       showConfirm({
         title: 'Resume Selected Processes',
         message,
         type: 'default',
-        icon: '▶️',
+        icon: '[RESUME]',
         onConfirm: executeResume
       });
     } else {
@@ -944,7 +998,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
           <div className="widget-title">
             <div className="widget-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" role="img" aria-labelledby="gpu-icon-title">
-                <title id="gpu-icon-title">GPU 아이콘</title>
+                <title id="gpu-icon-title">GPU ?�이�?/title>
                 <rect x="4" y="4" width="16" height="16" rx="2" />
                 <rect x="9" y="9" width="6" height="6" />
                 <line x1="9" y1="1" x2="9" y2="4" />
@@ -959,12 +1013,12 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
             </div>
             <h2 id="gpu-process-widget-title">GPU Processes</h2>
             
-            {/* 실시간 업데이트 상태 표시기 */}
+            {/* ?�시�??�데?�트 ?�태 ?�시�?*/}
             {showUpdateIndicators && (
               <div 
                 role="status" 
                 aria-live="polite"
-                aria-label={`연결 상태: ${isConnected ? '연결됨' : '연결 해제됨'}, 마지막 업데이트: ${lastUpdateTime > 0 ? getRelativeTimeString(lastUpdateTime) : '없음'}`}
+                aria-label={`?�결 ?�태: ${isConnected ? '?�결?? : '?�결 ?�제??}, 마�?�??�데?�트: ${lastUpdateTime > 0 ? getRelativeTimeString(lastUpdateTime) : '?�음'}`}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -974,10 +1028,10 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                   color: 'var(--color-text-secondary)'
                 }}
               >
-                {/* 연결 상태 표시기 */}
+                {/* ?�결 ?�태 ?�시�?*/}
                 <div 
                   role="img"
-                  aria-label={isConnected ? '실시간 연결 상태: 연결됨' : '실시간 연결 상태: 연결 해제됨'}
+                  aria-label={isConnected ? '?�시�??�결 ?�태: ?�결?? : '?�시�??�결 ?�태: ?�결 ?�제??}
                   className={getConnectionStatusClass(isConnected)}
                   style={{
                     width: '6px',
@@ -989,7 +1043,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                   title={isConnected ? 'Connected - Real-time updates' : 'Disconnected'} 
                 />
                 
-                {/* 마지막 업데이트 시간 */}
+                {/* 마�?�??�데?�트 ?�간 */}
                 {lastUpdateTime > 0 && (
                   <span 
                     style={{ 
@@ -997,7 +1051,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                       opacity: 0.8
                     }}
                     title={`Last update: ${formatTime(lastUpdateTime)}`}
-                    aria-label={`마지막 업데이트 시간: ${formatTime(lastUpdateTime)}`}
+                    aria-label={`마�?�??�데?�트 ?�간: ${formatTime(lastUpdateTime)}`}
                   >
                     {getRelativeTimeString(lastUpdateTime)}
                   </span>
@@ -1029,21 +1083,21 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
             <span className="widget-value-text">
               {filterEnabled ? (
                 <>
-                  {sortedProcesses.length}/{filteredCount} filtered (of {totalCount}) by {sortBy.toUpperCase().replace('_', ' ')} {sortOrder === 'desc' ? '↓' : '↑'}
+                  {sortedProcesses.length}/{filteredCount} filtered (of {totalCount}) by {sortBy.toUpperCase().replace('_', ' ')} {sortOrder === 'desc' ? '▼' : '▲'}
                 </>
               ) : (
                 <>
-                  Top {processCount} by {sortBy.toUpperCase().replace('_', ' ')} {sortOrder === 'desc' ? '↓' : '↑'}
+                  Top {processCount} by {sortBy.toUpperCase().replace('_', ' ')} {sortOrder === 'desc' ? '▼' : '▲'}
                 </>
               )}
             </span>
           </div>
           
-          {/* 전체 상태 요약 */}
+          {/* ?�체 ?�태 ?�약 */}
           {sortedProcesses.length > 0 && (
             <div 
               role="complementary" 
-              aria-label="프로세스 상태 요약"
+              aria-label="?�로?�스 ?�태 ?�약"
               style={{
                 display: 'flex',
                 justifyContent: 'space-around',
@@ -1064,11 +1118,11 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                     gap: '0.25rem',
                     justifyContent: 'center'
                   }}
-                  aria-label={`실행 중인 프로세스: ${sortedProcesses.filter(p => p.status.toLowerCase() === 'running').length}개`}
+                  aria-label={`?�행 중인 ?�로?�스: ${sortedProcesses.filter(p => p.status.toLowerCase() === 'running').length}�?}
                 >
                   <div 
                     role="img"
-                    aria-label="실행 중 상태 표시기"
+                    aria-label="?�행 �??�태 ?�시�?
                     style={{
                       width: '6px',
                       height: '6px',
@@ -1093,11 +1147,11 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                     gap: '0.25rem',
                     justifyContent: 'center'
                   }}
-                  aria-label={`대기 중인 프로세스: ${sortedProcesses.filter(p => p.status.toLowerCase() === 'idle').length}개`}
+                  aria-label={`?��?중인 ?�로?�스: ${sortedProcesses.filter(p => p.status.toLowerCase() === 'idle').length}�?}
                 >
                   <div 
                     role="img"
-                    aria-label="대기 중 상태 표시기"
+                    aria-label="?��?�??�태 ?�시�?
                     style={{
                       width: '6px',
                       height: '6px',
@@ -1122,11 +1176,11 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                     gap: '0.25rem',
                     justifyContent: 'center'
                   }}
-                  aria-label={`일시정지된 프로세스: ${sortedProcesses.filter(p => p.status.toLowerCase() === 'suspended').length}개`}
+                  aria-label={`?�시?��????�로?�스: ${sortedProcesses.filter(p => p.status.toLowerCase() === 'suspended').length}�?}
                 >
                   <div 
                     role="img"
-                    aria-label="일시정지 상태 표시기"
+                    aria-label="?�시?��? ?�태 ?�시�?
                     style={{
                       width: '6px',
                       height: '6px',
@@ -1151,9 +1205,9 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                     gap: '0.25rem',
                     justifyContent: 'center'
                   }}
-                  aria-label={`높은 GPU 사용률 프로세스: ${sortedProcesses.filter(p => p.gpu_usage > 90).length}개`}
+                  aria-label={`?��? GPU ?�용�??�로?�스: ${sortedProcesses.filter(p => p.gpu_usage > 90).length}�?}
                 >
-                  <span role="img" aria-label="높은 사용률 표시">🔥</span> {sortedProcesses.filter(p => p.gpu_usage > 90).length}
+                  <span role="img" aria-label="?��? ?�용�??�시">?��</span> {sortedProcesses.filter(p => p.gpu_usage > 90).length}
                 </div>
                 <div style={{ color: 'var(--color-text-secondary)', fontSize: '0.7rem' }}>High Usage</div>
               </div>
@@ -1163,7 +1217,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
           <div 
             className="process-list" 
             role="table" 
-            aria-label="GPU 프로세스 목록"
+            aria-label="GPU ?�로?�스 목록"
             aria-rowcount={sortedProcesses.length}
             aria-describedby="gpu-process-widget-title"
           >
@@ -1201,7 +1255,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                   marginBottom: 'var(--spacing-md)',
                   opacity: 0.5
                 }}>
-                  🔍
+                  ?��
                 </div>
                 <div style={{
                   fontSize: '0.875rem',
@@ -1233,11 +1287,11 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                 <div 
                   className="process-header" 
                   role="rowgroup"
-                  aria-label="테이블 헤더"
+                  aria-label="?�이�??�더"
                 >
                   <div 
                     role="columnheader"
-                    aria-label="모든 프로세스 선택/해제"
+                    aria-label="모든 ?�로?�스 ?�택/?�제"
                     className="process-select-header"
                     title="Select all processes"
                   >
@@ -1245,7 +1299,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                       type="checkbox"
                       checked={selectedProcesses.size > 0 && selectedProcesses.size === sortedProcesses.length}
                       onChange={handleSelectAll}
-                      aria-label={`모든 프로세스 선택 (현재 ${selectedProcesses.size}/${sortedProcesses.length}개 선택됨)`}
+                      aria-label={`모든 ?�로?�스 ?�택 (?�재 ${selectedProcesses.size}/${sortedProcesses.length}�??�택??`}
                       title="Select all processes"
                       style={{
                         margin: 0,
@@ -1261,7 +1315,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                     onClick={() => handleHeaderClick('name')}
                     onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && handleHeaderClick('name')}
                     title="Click to sort by process name"
-                    aria-label="프로세스 이름으로 정렬"
+                    aria-label="?�로?�스 ?�름?�로 ?�렬"
                   >
                     Process {getSortIcon('name')}
                   </div>
@@ -1273,7 +1327,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                     onClick={() => handleHeaderClick('pid')}
                     onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && handleHeaderClick('pid')}
                     title="Click to sort by PID"
-                    aria-label="프로세스 ID로 정렬"
+                    aria-label="?�로?�스 ID�??�렬"
                   >
                     PID {getSortIcon('pid')}
                   </div>
@@ -1285,7 +1339,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                     onClick={() => handleHeaderClick('gpu_usage')}
                     onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && handleHeaderClick('gpu_usage')}
                     title="Click to sort by GPU usage"
-                    aria-label="GPU 사용률로 정렬"
+                    aria-label="GPU ?�용률로 ?�렬"
                   >
                     GPU {getSortIcon('gpu_usage')}
                   </div>
@@ -1297,7 +1351,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                     onClick={() => handleHeaderClick('gpu_memory')}
                     onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && handleHeaderClick('gpu_memory')}
                     title="Click to sort by GPU memory usage"
-                    aria-label="GPU 메모리 사용량으로 정렬"
+                    aria-label="GPU 메모�??�용?�으�??�렬"
                   >
                     VRAM {getSortIcon('gpu_memory')}
                   </div>
@@ -1309,7 +1363,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                     onClick={() => handleHeaderClick('type')}
                     onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && handleHeaderClick('type')}
                     title="Click to sort by process type"
-                    aria-label="프로세스 타입으로 정렬"
+                    aria-label="?�로?�스 ?�?�으�??�렬"
                   >
                     Type {getSortIcon('type')}
                   </div>
@@ -1321,6 +1375,8 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                   const usageClass = getGpuUsageClass(process.gpu_usage);
                   const memoryClass = getMemoryUsageClass(process.gpu_memory);
                   const typeClass = getProcessTypeClass(process.type);
+                  const truncatedProcessName = formatProcessName(process.name, processNameCharacterLimit);
+                  const isProcessNameTruncated = truncatedProcessName !== process.name;
                   
                   return (
                   <div 
@@ -1333,7 +1389,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                     role="row"
                     aria-rowindex={index + 1}
                     aria-selected={selectedProcesses.has(process.pid)}
-                    aria-label={`${index + 1}번째 프로세스: ${process.name}, PID ${process.pid}, GPU 사용률 ${process.gpu_usage.toFixed(1)}%, 메모리 ${process.gpu_memory.toFixed(0)}MB, 상태 ${process.status}`}
+                    aria-label={`${index + 1}번째 ?�로?�스: ${process.name}, PID ${process.pid}, GPU ?�용�?${process.gpu_usage.toFixed(1)}%, 메모�?${process.gpu_memory.toFixed(0)}MB, ?�태 ${process.status}`}
                     data-process-index={index}
                     onFocus={() => {
                       if (!isKeyboardNavigation) {
@@ -1369,7 +1425,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                       } : {})
                     }}
                   >
-                    <div className="process-select" role="gridcell" aria-label="프로세스 선택">
+                    <div className="process-select" role="gridcell" aria-label="?�로?�스 ?�택">
                       <input
                         type="checkbox"
                         checked={selectedProcesses.has(process.pid)}
@@ -1377,7 +1433,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                           e.stopPropagation();
                           handleProcessSelect(process.pid, e as any);
                         }}
-                        aria-label={`${process.name} 프로세스 선택`}
+                        aria-label={`${process.name} ?�로?�스 ?�택`}
                         style={{
                           margin: 0,
                           cursor: 'pointer'
@@ -1387,29 +1443,32 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                     <div 
                       className="process-name" 
                       role="gridcell"
-                      aria-label={`프로세스 이름: ${process.name}`}
-                      title={`${process.name}\nCommand: ${process.command}`}
+                      style={{ minWidth: 0, cursor: isProcessNameTruncated ? 'help' : 'default' }}
+                      aria-label={`?�로?�스 ?�름: ${process.name}`}
+                      title={isProcessNameTruncated ? `${process.name}\nCommand: ${process.command}` : undefined}
                     >
                       <span 
                         className="process-type-icon"
                         role="img"
-                        aria-label={`프로세스 유형: ${process.type}`}
+                        aria-label={`?�로?�스 ?�형: ${process.type}`}
                       >
                         {getProcessTypeIcon(process.type, process.name)}
                       </span>
-                      {formatProcessName(process.name)}
+                      <span className="process-name-text">
+                        {truncatedProcessName}
+                      </span>
                     </div>
                     <div 
                       className="process-pid"
                       role="gridcell"
-                      aria-label={`프로세스 ID: ${process.pid}`}
+                      aria-label={`?�로?�스 ID: ${process.pid}`}
                     >
                       {process.pid}
                     </div>
                     <div 
                       className="process-gpu"
                       role="gridcell"
-                      aria-label={`GPU 사용률: ${process.gpu_usage.toFixed(1)}퍼센트`}
+                      aria-label={`GPU ?�용�? ${process.gpu_usage.toFixed(1)}?�센??}
                       style={{ 
                         color: process.gpu_usage > 90 ? 'var(--color-error)' : 
                                process.gpu_usage > 70 ? 'var(--color-warning)' : 
@@ -1423,7 +1482,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                       {process.gpu_usage > 95 && (
                         <span 
                           role="img" 
-                          aria-label="초고사용률 경고"
+                          aria-label="초고?�용�?경고"
                           style={{
                             position: 'absolute',
                             top: '-2px',
@@ -1431,14 +1490,14 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                             fontSize: '8px',
                             animation: 'pulse 1s infinite'
                           }}
-                        >🔥</span>
+                        >?��</span>
                       )}
                       {process.gpu_usage.toFixed(1)}%
                     </div>
                     <div 
                       className="process-memory"
                       role="gridcell"
-                      aria-label={`GPU 메모리 사용량: ${process.gpu_memory < 1024 ? `${process.gpu_memory.toFixed(0)}메가바이트` : `${(process.gpu_memory / 1024).toFixed(1)}기가바이트`}`}
+                      aria-label={`GPU 메모�??�용?? ${process.gpu_memory < 1024 ? `${process.gpu_memory.toFixed(0)}메�?바이?? : `${(process.gpu_memory / 1024).toFixed(1)}기�?바이??}`}
                       style={{ 
                         color: process.gpu_memory > 2048 ? 'var(--color-error)' : 
                                process.gpu_memory > 1024 ? 'var(--color-warning)' : 
@@ -1452,7 +1511,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                       {process.gpu_memory > 4096 && (
                         <span 
                           role="img" 
-                          aria-label="고용량 메모리 경고"
+                          aria-label="고용??메모�?경고"
                           style={{
                             position: 'absolute',
                             top: '-2px',
@@ -1460,7 +1519,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                             fontSize: '8px',
                             animation: 'pulse 1s infinite'
                           }}
-                        >💾</span>
+                        >?��</span>
                       )}
                       {process.gpu_memory < 1024 
                         ? `${process.gpu_memory.toFixed(0)}MB`
@@ -1470,7 +1529,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                     <div 
                       className={`process-type ${getProcessTypeClass(process.type)}`}
                       role="gridcell"
-                      aria-label={`프로세스 타입: ${process.type}, 상태: ${process.status}`}
+                      aria-label={`?�로?�스 ?�?? ${process.type}, ?�태: ${process.status}`}
                       title={`Process Type: ${process.type}\nStatus: ${process.status}`}
                     >
                       <div style={{ 
@@ -1482,16 +1541,16 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                         <span 
                           className="process-type-icon"
                           role="img"
-                          aria-label={`프로세스 유형: ${process.type}`}
+                          aria-label={`?�로?�스 ?�형: ${process.type}`}
                         >
                           {getProcessTypeIcon(process.type, process.name)}
                         </span>
                         <span style={{ fontSize: '0.75rem' }}>{process.type}</span>
                         
-                        {/* 상태 표시 점 */}
+                        {/* ?�태 ?�시 ??*/}
                         <div 
                           role="img"
-                          aria-label={`프로세스 상태: ${process.status}`}
+                          aria-label={`?�로?�스 ?�태: ${process.status}`}
                           className={getConnectionStatusClass(process.status.toLowerCase() === 'running')}
                           style={{
                             width: '6px',
@@ -1518,12 +1577,12 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
             )}
           </div>
           
-          {/* 프로세스 제어 버튼 그룹 */}
+          {/* ?�로?�스 ?�어 버튼 그룹 */}
           {selectedProcesses.size > 0 && (
             <div 
               className="process-control-buttons" 
               role="toolbar"
-              aria-label="선택된 프로세스 제어 도구"
+              aria-label="?�택???�로?�스 ?�어 ?�구"
               style={{
                 display: 'flex',
                 gap: 'var(--spacing-sm)',
@@ -1537,21 +1596,21 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
               <div 
                 role="status" 
                 aria-live="polite"
-                aria-label={`${selectedProcesses.size}개의 프로세스가 선택됨`}
+                aria-label={`${selectedProcesses.size}개의 ?�로?�스가 ?�택??}
                 style={{
                   fontSize: '0.75rem',
                   color: 'var(--color-text-secondary)',
                   marginRight: 'var(--spacing-sm)'
                 }}
               >
-                {selectedProcesses.size}개 프로세스 선택됨
+                {selectedProcesses.size}�??�로?�스 ?�택??
               </div>
               <button
                 className="process-control-btn kill-btn"
                 onClick={handleKillSelected}
                 disabled={isControlInProgress}
-                aria-label={`선택된 ${selectedProcesses.size}개 프로세스 종료`}
-                title="선택된 프로세스 종료"
+                aria-label={`?�택??${selectedProcesses.size}�??�로?�스 종료`}
+                title="?�택???�로?�스 종료"
                 style={{
                   padding: 'var(--spacing-xs) var(--spacing-sm)',
                   border: '1px solid var(--color-error)',
@@ -1580,7 +1639,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                   </>
                 ) : (
                   <>
-                    🛑 Kill
+                    [X] Kill
                   </>
                 )}
               </button>
@@ -1588,7 +1647,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                 className="process-control-btn suspend-btn"
                 onClick={handleSuspendSelected}
                 disabled={isControlInProgress}
-                title="선택된 프로세스 일시정지"
+                title="?�택???�로?�스 ?�시?��?"
                 style={{
                   padding: 'var(--spacing-xs) var(--spacing-sm)',
                   border: '1px solid var(--color-warning)',
@@ -1617,7 +1676,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                   </>
                 ) : (
                   <>
-                    ⏸️ Suspend
+                    [PAUSE] Suspend
                   </>
                 )}
               </button>
@@ -1625,7 +1684,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                 className="process-control-btn resume-btn"
                 onClick={handleResumeSelected}
                 disabled={isControlInProgress}
-                title="선택된 프로세스 재개"
+                title="?�택???�로?�스 ?�개"
                 style={{
                   padding: 'var(--spacing-xs) var(--spacing-sm)',
                   border: '1px solid var(--color-success)',
@@ -1654,14 +1713,14 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                   </>
                 ) : (
                   <>
-                    ▶️ Resume
+                    [RESUME] Resume
                   </>
                 )}
               </button>
               <button
                 className="process-control-btn clear-btn"
                 onClick={clearSelection}
-                title="선택 해제"
+                title="?�택 ?�제"
                 style={{
                   padding: 'var(--spacing-xs) var(--spacing-sm)',
                   border: '1px solid var(--color-border)',
@@ -1690,12 +1749,12 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
         </div>
       </div>
 
-      {/* 컨텍스트 메뉴 */}
+      {/* 컨텍?�트 메뉴 */}
       {contextMenu.visible && (
         <div
           className="context-menu"
           role="menu"
-          aria-label={`${contextMenu.processName} 프로세스 제어 메뉴`}
+          aria-label={`${contextMenu.processName} ?�로?�스 ?�어 메뉴`}
           style={{
             position: 'fixed',
             top: contextMenu.y,
@@ -1739,7 +1798,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
             role="menuitem"
             onClick={() => handleContextAction('kill')}
             disabled={isControlInProgress}
-            aria-label={`${contextMenu.processName} 프로세스 종료`}
+            aria-label={`${contextMenu.processName} ?�로?�스 종료`}
             style={{
               width: '100%',
               padding: '0.5rem 1rem',
@@ -1760,7 +1819,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
               e.currentTarget.style.backgroundColor = 'transparent';
             }}
           >
-            <span role="img" aria-label="종료">🛑</span> Kill Process
+            <span role="img" aria-label="종료">[X]</span> Kill Process
           </button>
           
           <button
@@ -1768,7 +1827,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
             role="menuitem"
             onClick={() => handleContextAction('suspend')}
             disabled={isControlInProgress}
-            aria-label={`${contextMenu.processName} 프로세스 일시정지`}
+            aria-label={`${contextMenu.processName} ?�로?�스 ?�시?��?`}
             style={{
               width: '100%',
               padding: '0.5rem 1rem',
@@ -1789,7 +1848,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
               e.currentTarget.style.backgroundColor = 'transparent';
             }}
           >
-            <span role="img" aria-label="일시정지">⏸️</span> Suspend Process
+            <span role="img" aria-label="?�시?��?">[PAUSE]</span> Suspend Process
           </button>
           
           <button
@@ -1797,7 +1856,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
             role="menuitem"
             onClick={() => handleContextAction('resume')}
             disabled={isControlInProgress}
-            aria-label={`${contextMenu.processName} 프로세스 재개`}
+            aria-label={`${contextMenu.processName} ?�로?�스 ?�개`}
             style={{
               width: '100%',
               padding: '0.5rem 1rem',
@@ -1818,7 +1877,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
               e.currentTarget.style.backgroundColor = 'transparent';
             }}
           >
-            ▶️ Resume Process
+            [RESUME] Resume Process
           </button>
 
           <div style={{
@@ -1862,11 +1921,11 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                 e.currentTarget.style.backgroundColor = 'transparent';
               }}
             >
-              {priority === 'high' && '🔴'}
-              {priority === 'above_normal' && '🟠'}
-              {priority === 'normal' && '🟡'}
-              {priority === 'below_normal' && '🔵'}
-              {priority === 'low' && '🟢'}
+              {priority === 'high' && '?��'}
+              {priority === 'above_normal' && '?��'}
+              {priority === 'normal' && '?��'}
+              {priority === 'below_normal' && '?��'}
+              {priority === 'low' && '?��'}
               {priority.replace('_', ' ').toUpperCase()}
             </button>
           ))}
@@ -1878,7 +1937,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
           isOpen={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
           onSave={handleSettingsSave}
-          title="GPU Process Monitor Widget 설정"
+          title="GPU Process Monitor Widget ?�정"
         >
           <div className="settings-section">
             <h4 style={{ 
@@ -1919,7 +1978,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                   e.currentTarget.style.color = 'var(--color-text-primary)';
                 }}
               >
-                🚀 Performance
+                ?? Performance
               </button>
               
               <button
@@ -1945,7 +2004,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                   e.currentTarget.style.color = 'var(--color-text-primary)';
                 }}
               >
-                🎮 Gaming
+                ?�� Gaming
               </button>
               
               <button
@@ -1971,7 +2030,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                   e.currentTarget.style.color = 'var(--color-text-primary)';
                 }}
               >
-                👨‍💻 Developer
+                ?��?��?Developer
               </button>
               
               <button
@@ -1997,7 +2056,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                   e.currentTarget.style.color = 'var(--color-text-primary)';
                 }}
               >
-                📱 Minimal
+                ?�� Minimal
               </button>
             </div>
             
@@ -2025,7 +2084,7 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
                 e.currentTarget.style.color = 'var(--color-warning)';
               }}
             >
-              🔄 Reset to Default Settings
+              ?�� Reset to Default Settings
             </button>
             
             <div style={{ 
@@ -2254,11 +2313,11 @@ const GpuProcessWidget: React.FC<WidgetProps> = ({ widgetId, onRemove, isExpande
             }}>
               <strong>Visual Status Indicators:</strong>
               <div style={{ marginTop: '0.25rem', lineHeight: 1.4 }}>
-                • <span style={{ color: 'var(--color-success)' }}>●</span> Running processes (pulsing animation)<br/>
-                • <span style={{ color: 'var(--color-warning)' }}>●</span> Idle processes (blinking animation)<br/>
-                • <span style={{ color: 'var(--color-error)' }}>●</span> Suspended processes (flashing animation)<br/>
-                • 🔥 High GPU usage (&gt;95%) indicator<br/>
-                • 💾 High memory usage (&gt;4GB) indicator
+                ??<span style={{ color: 'var(--color-success)' }}>??/span> Running processes (pulsing animation)<br/>
+                ??<span style={{ color: 'var(--color-warning)' }}>??/span> Idle processes (blinking animation)<br/>
+                ??<span style={{ color: 'var(--color-error)' }}>??/span> Suspended processes (flashing animation)<br/>
+                ???�� High GPU usage (&gt;95%) indicator<br/>
+                ???�� High memory usage (&gt;4GB) indicator
               </div>
             </div>
           </div>
