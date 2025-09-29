@@ -414,7 +414,30 @@ func getWMIBatteryCached() ([]byte, error) {
 	return output, nil
 }
 
-// 배치로 여러 PID의 프로세스 이름을 한 번에 조회
+// cleanProcessName cleans up process names by extracting executable name from file paths
+func cleanProcessName(processName string) string {
+	if processName == "" {
+		return processName
+	}
+
+	// Handle Windows paths with backslashes
+	if strings.Contains(processName, "\\") {
+		parts := strings.Split(processName, "\\")
+		if len(parts) > 0 {
+			processName = parts[len(parts)-1]
+		}
+	}
+
+	// Handle Unix paths with forward slashes
+	if strings.Contains(processName, "/") {
+		parts := strings.Split(processName, "/")
+		if len(parts) > 0 {
+			processName = parts[len(parts)-1]
+		}
+	}
+
+	return processName
+}
 func getProcessNamesBatch(pids []int32) map[int32]string {
 	if len(pids) == 0 {
 		return make(map[int32]string)
@@ -648,7 +671,7 @@ func parseNVIDIAProcessesUnifiedOptimized() ([]GPUProcess, error) {
 			
 			process := GPUProcess{
 				PID:       int32(pid),
-				Name:      processName,
+				Name: cleanProcessName(processName),
 				GPUUsage:  0, // query-compute-apps는 사용률 정보 없음
 				GPUMemory: memory,
 				Type:      "compute",
@@ -763,11 +786,13 @@ func parseNVIDIAPmonOutputOptimized(output []byte) ([]GPUProcess, error) {
 			processName, exists := processNames[info.pid]
 			if !exists {
 				processName = fmt.Sprintf("PID_%d", info.pid)
+		} else {
+			processName = cleanProcessName(processName)
 			}
 			
 			process := GPUProcess{
 				PID:       info.pid,
-				Name:      processName,
+				Name: cleanProcessName(processName),
 				GPUUsage:  info.smUsage,    // 실제 SM 사용률 사용 (추정치가 아님)
 				GPUMemory: info.gpuMemory,  // 실제 메모리 사용량
 				Type:      info.processType,
@@ -3461,11 +3486,13 @@ func parseNVIDIAProcessOutput(output []byte) ([]GPUProcess, error) {
 		processName, exists := processNames[info.pid]
 		if !exists {
 			processName = fmt.Sprintf("PID_%d", info.pid)
+		} else {
+			processName = cleanProcessName(processName)
 		}
 		
 		process := GPUProcess{
 			PID:       info.pid,
-			Name:      processName,
+			Name: cleanProcessName(processName),
 			GPUUsage:  info.gpuUsage,
 			GPUMemory: info.gpuMemory,
 			Type:      info.processType,
@@ -3625,7 +3652,7 @@ func parseNVIDIAAlternativeOutput(output []byte, totalGPUUsage float64) ([]GPUPr
 			
 			process := GPUProcess{
 				PID:       int32(pid),
-				Name:      processName,
+				Name: cleanProcessName(processName),
 				GPUUsage:  0, // 나중에 계산
 				GPUMemory: gpuMemory,
 				Type:      "C", // Compute로 가정
@@ -4135,8 +4162,8 @@ func parsePerformanceCounterData(memoryOutput, utilizationOutput []byte) []GPUPr
 	for pid, process := range processMap {
 		// Windows API를 통해 프로세스 이름 가져오기
 		if processName := getProcessNameByPID(int(pid)); processName != "" {
-			process.Name = processName
-			process.Command = processName
+			process.Name = cleanProcessName(processName)
+			process.Command = cleanProcessName(processName)
 		}
 		
 		// 메모리 기반 사용률 추정 (실제 사용률 데이터가 없는 경우)
@@ -4617,7 +4644,7 @@ func parseAMDProcesses() ([]GPUProcess, error) {
 			
 			process := GPUProcess{
 				PID:       int32(pid),
-				Name:      processName,
+				Name: cleanProcessName(processName),
 				GPUUsage:  0, // AMD에서는 정확한 사용률을 얻기 어려움
 				GPUMemory: 0,
 				Type:      "G", // Graphics로 가정
@@ -5516,7 +5543,7 @@ func findProcessesByNames(processNames []string, gpuType string) ([]GPUProcess, 
 					
 					foundProcesses = append(foundProcesses, GPUProcess{
 						PID:       int32(pid),
-						Name:      processName,
+						Name: cleanProcessName(processName),
 						GPUUsage:  -1.0, // 이름 기반 추정에서는 사용률 알 수 없음
 						GPUMemory: -1.0, // 메모리 사용량 알 수 없음
 						Type:      "Graphics",
@@ -5705,11 +5732,11 @@ func getGPUProcessesImproved(gpuInfo *GPUInfo) ([]GPUProcess, error) {
 			
 			process := GPUProcess{
 				PID:       int32(pid),
-				Name:      processName,
+				Name: cleanProcessName(processName),
 				GPUUsage:  gpuUsage,
 				GPUMemory: adjustedMemoryMB,
 				Type:      "Compute",
-				Command:   processName,
+				Command: cleanProcessName(processName),
 				Status:    "running",
 			}
 			
@@ -5941,11 +5968,11 @@ func getGPUProcessesFromWindows() ([]GPUProcess, error) {
 			
 			gpuProcess := GPUProcess{
 				PID:       int32(pid),
-				Name:      processName,
+				Name: cleanProcessName(processName),
 				GPUUsage:  gpuUsage,
 				GPUMemory: gpuMemory, // MB 단위
 				Type:      "Graphics",
-				Command:   processName,
+				Command: cleanProcessName(processName),
 				Status:    "running",
 			}
 			
@@ -6004,11 +6031,11 @@ func getGPUProcessesFromNvidiaSmi() ([]GPUProcess, error) {
 			
 			gpuProcess := GPUProcess{
 				PID:       int32(pid),
-				Name:      processName,
+				Name: cleanProcessName(processName),
 				GPUUsage:  gpuUsage,
 				GPUMemory: gpuMemory,
 				Type:      "Compute",
-				Command:   processName,
+				Command: cleanProcessName(processName),
 				Status:    "running",
 			}
 			

@@ -220,17 +220,49 @@ export const useSystemResourceStore = create<SystemResourceState>((set) => ({
         const processIndex = parseInt(type.replace('gpu_process_', ''));
         if (info) {
           const [name, pid, gpu_memory, processType, command, status] = info.split('|');
+
+          // Validate process data
+          const parsedPid = parseInt(pid);
+          const parsedGpuMemory = parseFloat(gpu_memory);
+
+          if (isNaN(parsedPid) || parsedPid <= 0) {
+            console.warn(`[SystemResourceStore] Invalid PID for GPU process:`, pid, 'info:', info);
+            return state;
+          }
+
+          if (!name || name.trim() === '') {
+            console.warn(`[SystemResourceStore] Empty process name for PID ${parsedPid}, info:`, info);
+            return state;
+          }
+
+          if (isNaN(parsedGpuMemory) || parsedGpuMemory < 0) {
+            console.warn(`[SystemResourceStore] Invalid GPU memory for PID ${parsedPid}:`, gpu_memory, 'info:', info);
+            return state;
+          }
+
+          // Clean process name (remove file paths, keep just executable name)
+          let cleanName = name;
+          if (name.includes('\\') || name.includes('/')) {
+            const parts = name.split(/[\\\/]/);
+            cleanName = parts[parts.length - 1] || name;
+          }
+
           const newGpuProcesses = [...state.data.gpu_processes];
           newGpuProcesses[processIndex] = {
-            pid: parseInt(pid),
-            name,
+            pid: parsedPid,
+            name: cleanName,
             gpu_usage: value,
-            gpu_memory: parseFloat(gpu_memory),
-            type: processType,
-            command,
-            status,
+            gpu_memory: parsedGpuMemory,
+            type: processType || 'unknown',
+            command: command || cleanName,
+            status: status || 'running',
           };
-          
+
+          // Debug log for process name processing
+          if (name !== cleanName) {
+            console.debug(`[SystemResourceStore] Process name cleaned: "${name}" -> "${cleanName}"`);
+          }
+
           return {
             data: {
               ...state.data,
@@ -238,8 +270,8 @@ export const useSystemResourceStore = create<SystemResourceState>((set) => ({
             },
           };
         }
-      }
       
+      }
       // Handle GPU info separately
       if (type === 'gpu_info' && info) {
         const currentGpuInfo = state.data.gpu_info || [];
