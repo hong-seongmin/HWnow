@@ -1,6 +1,6 @@
 import React, { memo, useCallback } from 'react';
 import type { GPUProcessData } from './DataProcessor';
-import { formatGPUMemory, formatGPUUsage, abbreviateProcessName } from './DataProcessor';
+import { formatGPUMemory, formatGPUUsage } from './DataProcessor';
 
 interface ProcessTableProps {
   processes: GPUProcessData[];
@@ -13,6 +13,7 @@ interface ProcessTableProps {
   onSelectAll: () => void;
   onTerminateProcess: (pid: number, processName: string) => void;
   className?: string;
+  maxProcessNameLength?: number;
 }
 
 const SortIcon: React.FC<{ column: string; sortColumn: string; sortDirection: 'asc' | 'desc' }> = memo(({
@@ -81,7 +82,8 @@ const ProcessTableRow: React.FC<{
   isTerminating: boolean;
   onSelect: (pid: number, isSelected: boolean) => void;
   onTerminate: (pid: number, processName: string) => void;
-}> = memo(({ process, isSelected, isTerminating, onSelect, onTerminate }) => {
+  maxProcessNameLength: number;
+}> = memo(({ process, isSelected, isTerminating, onSelect, onTerminate, maxProcessNameLength }) => {
   const handleCheckboxChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     onSelect(process.pid, e.target.checked);
   }, [onSelect, process.pid]);
@@ -110,7 +112,7 @@ const ProcessTableRow: React.FC<{
       <td role="gridcell" className="pid-cell">{process.pid}</td>
       <td role="gridcell" className="name-cell">
         <span title={process.name}>
-          {abbreviateProcessName(process.name, 25)}
+          {process.name}
         </span>
       </td>
       <td role="gridcell" className="usage-cell">
@@ -163,6 +165,7 @@ export const ProcessTable: React.FC<ProcessTableProps> = memo(({
   onProcessSelect,
   onSelectAll,
   onTerminateProcess,
+  maxProcessNameLength = 25,
   className = ''
 }) => {
   const handleHeaderClick = useCallback((column: string) => {
@@ -271,6 +274,7 @@ export const ProcessTable: React.FC<ProcessTableProps> = memo(({
               isTerminating={isTerminating.has(process.pid)}
               onSelect={onProcessSelect}
               onTerminate={onTerminateProcess}
+              maxProcessNameLength={maxProcessNameLength}
             />
           ))}
         </tbody>

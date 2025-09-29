@@ -152,10 +152,38 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
   const [selectedProcesses, setSelectedProcesses] = useState<Set<number>>(new Set());
   const [isTerminating, setIsTerminating] = useState<Set<number>>(new Set());
   
+  const [processNameCharacterLimit, setProcessNameCharacterLimit] = useState<number>(1000);
+
   const { showToast } = useToast();
   
   const widgetRef = useRef<HTMLDivElement>(null);
   
+  const updateProcessNameLimit = useCallback(() => {
+    const widgetElement = widgetRef.current;
+    if (!widgetElement) {
+      return;
+    }
+
+    const processNameElement = widgetElement.querySelector<HTMLElement>('[data-process-name]');
+    if (!processNameElement) {
+      return;
+    }
+
+    const width = processNameElement.getBoundingClientRect().width;
+    if (width <= 0) {
+      return;
+    }
+
+    const effectiveWidth = Math.max(0, width - PROCESS_NAME_PADDING_PX);
+    const widthBasedLimit = Math.floor(effectiveWidth / APPROXIMATE_PROCESS_NAME_CHAR_WIDTH);
+    const nextLimit = Math.max(
+      MIN_PROCESS_NAME_CHAR_LIMIT,
+      Math.min(MAX_PROCESS_NAME_CHAR_LIMIT, widthBasedLimit)
+    );
+
+    setProcessNameCharacterLimit((prev) => (prev === nextLimit ? prev : nextLimit));
+  }, []);
+
   const rawGpuProcesses = useSystemResourceStore((state) => state.data.gpu_processes);
   const gpuProcesses = getSafeGPUProcesses(rawGpuProcesses);
   
@@ -176,6 +204,11 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
     gpuShowTerminateButton: true,
     gpuRefreshInterval: 3,
   };
+const APPROXIMATE_PROCESS_NAME_CHAR_WIDTH = 7;
+const PROCESS_NAME_PADDING_PX = 16;
+const MIN_PROCESS_NAME_CHAR_LIMIT = 4;
+const MAX_PROCESS_NAME_CHAR_LIMIT = 120;
+
 
   const config = { ...defaultConfig, ...widget?.config };
   
@@ -245,6 +278,19 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
   }, [sortedProcesses]);
   
   const isEmpty = useMemo(() => sortedProcesses.length === 0, [sortedProcesses.length]);
+  
+  useEffect(() => {
+    updateProcessNameLimit();
+
+    if (!widgetRef.current || typeof ResizeObserver === 'undefined') {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => updateProcessNameLimit());
+    observer.observe(widgetRef.current);
+
+    return () => observer.disconnect();
+  }, [updateProcessNameLimit, sortedProcesses.length]);
   
   // WebSocket 연결 상태 모니터링
   React.useEffect(() => {
@@ -827,7 +873,11 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
           
           {/* Process List */}
           <div className="process-list" role="table" aria-label="GPU process list">
-            {sortedProcesses.map((process, index) => (
+            {sortedProcesses.map((process, index) => {
+              const nameDisplay = process.name;
+              const isNameTruncated = false;
+
+              return (
               <div 
                 key={`gpu-process-${process.pid}-${index}`}
                 className={`process-item ${selectedProcesses.has(process.pid) ? 'selected' : ''}`}
@@ -853,19 +903,20 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
                   />
                 </div>
                 <div role="cell">
-                  <div 
-                    style={{ 
-                      fontWeight: 500, 
+                  <div
+                    style={{
+                      fontWeight: 500,
                       fontSize: '0.875rem',
                       color: 'var(--color-text-primary)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      cursor: process.name.length > 25 ? 'help' : 'default'
+                      overflow: 'visible',
+                      whiteSpace: 'normal',
+                      wordBreak: 'break-word',
+                      lineHeight: '1.3',
+                      cursor: 'default'
                     }}
                     title={process.name.length > 25 ? `Full path: ${process.name}\n\nCommand: ${process.command}\nType: ${process.type}` : undefined}
                   >
-                    {abbreviateProcessName(process.name)}
+                    {process.name}
                   </div>
                   <div style={{ 
                     fontSize: '0.75rem', 
@@ -938,7 +989,8 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
                   </button>
                 </div>
               </div>
-            ))}
+            );
+          })}
           </div>
         </div>
       </div>
