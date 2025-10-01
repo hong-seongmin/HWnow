@@ -886,7 +886,7 @@ var (
 
 // 캐시 유효 기간 상수들 (CPU 최적화 Phase 4 - WMI 명령 실행 최적화)
 const (
-	GPU_PROCESS_CACHE_DURATION = 600 * time.Second    // CPU 최적화 Phase 6: 4분 → 10분 (대폭 증가로 nvidia-smi 호출 최소화)
+	GPU_PROCESS_CACHE_DURATION = 3 * time.Second      // UI 폴링(3초)과 동기화 - 실시간 GPU 프로세스 모니터링 (이전: 10분)
 	GPU_INFO_CACHE_DURATION    = 600 * time.Second    // CPU 최적화 Phase 5.2: 5분 → 10분 (10배 증가)
 	NVIDIA_SMI_PATH_CACHE_DURATION = 60 * time.Minute // CPU 최적화 Phase 5.2: 30분 → 1시간 (12배 증가)
 	VIDEO_CONTROLLER_CACHE_DURATION = 240 * time.Minute // CPU 최적화 Phase 4: 2시간 → 4시간 (WMI 캐시 대폭 확장)
@@ -4734,21 +4734,28 @@ func isCriticalProcessEnhanced(processName string, pid int32) (*CriticalProcessI
 
 // killGPUProcess는 지정된 PID의 GPU 프로세스를 종료합니다
 func KillGPUProcess(pid int32) error {
+	fmt.Printf("[DEBUG] ===== KillGPUProcess CALLED - PID: %d =====\n", pid)
 	LogInfo("Attempting to kill GPU process", "pid", pid)
 	
 	// 프로세스 존재 여부 확인
+	fmt.Printf("[DEBUG] Checking if process exists - PID: %d\n", pid)
 	proc, err := process.NewProcess(pid)
 	if err != nil {
+		fmt.Printf("[DEBUG] Process not found - PID: %d, Error: %v\n", pid, err)
 		LogError("Process not found", "pid", pid, "error", err)
 		return createProcessError("KILL_PROCESS", pid, "Process not found", ErrorCodeProcessNotFound)
 	}
-	
+
+	fmt.Printf("[DEBUG] Process exists - Getting name for PID: %d\n", pid)
 	// 프로세스 이름 가져오기
 	name, err := proc.Name()
 	if err != nil {
+		fmt.Printf("[DEBUG] Failed to get process name - PID: %d, Error: %v\n", pid, err)
 		LogError("Failed to get process name", "pid", pid, "error", err)
 		return createProcessError("KILL_PROCESS", pid, "Failed to get process name", ErrorCodeSystemError)
 	}
+
+	fmt.Printf("[DEBUG] Process name: %s (PID: %d)\n", name, pid)
 	
 	// 향상된 중요한 시스템 프로세스 보호
 	if protectionInfo, protectionErr := isCriticalProcessEnhanced(name, pid); protectionErr != nil {
@@ -4769,17 +4776,59 @@ func KillGPUProcess(pid int32) error {
 	}
 	
 	// 프로세스 종료 시도
+	fmt.Printf("[DEBUG] Starting kill process - Name: %s, PID: %d\n", name, pid)
 	LogInfo("Killing process", "name", name, "pid", pid)
-	
+
 	if runtime.GOOS == "windows" {
-		// Windows에서는 taskkill 명령 사용
+		// Windows: taskkill 실행
+		fmt.Printf("[DEBUG] Executing taskkill /F /PID %d\n", pid)
 		cmd := createHiddenCommand("taskkill", "/F", "/PID", fmt.Sprintf("%d", pid))
 		output, err := cmd.CombinedOutput()
+
 		if err != nil {
-			LogError("Failed to kill process using taskkill", "pid", pid, "error", err, "output", string(output))
-			return createProcessError("KILL_PROCESS", pid, "Failed to kill process", ErrorCodeSystemError)
+			fmt.Printf("[DEBUG] taskkill FAILED - PID: %d, Error: %v, Output: %s\n", pid, err, string(output))
+			LogError("taskkill command failed", "pid", pid, "error", err, "output", string(output))
+			return createProcessError("KILL_PROCESS", pid, fmt.Sprintf("taskkill failed: %v", err), ErrorCodeSystemError)
 		}
-		LogInfo("Successfully killed process using taskkill", "pid", pid, "output", string(output))
+
+		fmt.Printf("[DEBUG] taskkill executed successfully - PID: %d, Output: %s\n", pid, string(output))
+		LogInfo("taskkill executed", "pid", pid, "output", string(output))
+
+		// ⭐ 중요: 실제 종료 확인 (500ms 대기)
+		fmt.Printf("[DEBUG] Waiting 500ms to verify termination...\n")
+		time.Sleep(500 * time.Millisecond)
+
+		// 프로세스가 여전히 존재하는지 확인
+		if stillExists, _ := process.NewProcess(pid); stillExists != nil {
+			LogWarn("Process still exists after taskkill", "pid", pid, "name", name)
+
+			// WMIC 대안 시도
+			LogInfo("Trying WMIC alternative", "pid", pid)
+			wmicCmd := createHiddenCommand("wmic", "process", "where", fmt.Sprintf("processid=%d", pid), "delete")
+			wmicOutput, wmicErr := wmicCmd.CombinedOutput()
+
+			if wmicErr != nil {
+				LogError("WMIC also failed", "pid", pid, "error", wmicErr, "output", string(wmicOutput))
+				return createProcessError("KILL_PROCESS", pid,
+					"Process termination failed. Possible causes: insufficient privileges, protected process, or process is being used by another application. Try running as administrator.",
+					ErrorCodePermissionDenied)
+			}
+
+			LogInfo("WMIC executed", "pid", pid, "output", string(wmicOutput))
+
+			// WMIC 후 재확인 (300ms 대기)
+			time.Sleep(300 * time.Millisecond)
+			if finalCheck, _ := process.NewProcess(pid); finalCheck != nil {
+				LogError("Process still exists after WMIC", "pid", pid, "name", name)
+				return createProcessError("KILL_PROCESS", pid,
+					"Process cannot be terminated. It may be protected by the system or another application.",
+					ErrorCodePermissionDenied)
+			}
+
+			LogInfo("Process terminated successfully via WMIC", "pid", pid)
+		} else {
+			LogInfo("Process terminated successfully via taskkill", "pid", pid)
+		}
 	} else {
 		// Unix/Linux에서는 kill 명령 사용
 		if err := proc.Kill(); err != nil {
@@ -4796,7 +4845,7 @@ func KillGPUProcess(pid int32) error {
 			LogInfo("Successfully killed process using proc.Kill()", "pid", pid)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -5333,19 +5382,39 @@ func GetGPUInfo() (*GPUInfo, error) {
 
 // VerifyGPUProcess validates if a process is a valid GPU process with process name
 func VerifyGPUProcess(pid int32) (bool, string, error) {
-	// 먼저 기존 verifyGPUProcess 함수 활용
-	isValid, err := verifyGPUProcess(pid)
+	// GPU 프로세스 검증 개선: OS 레벨에서 프로세스 존재 확인 (캐시 의존성 제거)
+	// 문제: 10분 캐시로 인해 GPU 사용을 멈춘 프로세스를 "종료됨"으로 잘못 판단
+	// 해결: process.NewProcess로 실제 프로세스 존재 여부 확인 (빠르고 정확)
+
+	// 1. OS 레벨에서 프로세스 존재 확인
+	proc, err := process.NewProcess(pid)
 	if err != nil {
-		return false, "", err
+		// 프로세스가 실제로 존재하지 않음
+		LogDebug("Process does not exist (OS level check)", "pid", pid, "error", err)
+		return false, "", fmt.Errorf("process not found: %v", err)
 	}
-	
-	// 프로세스 이름 조회
-	processName := getProcessName(pid)
-	if processName == "" {
-		processName = "Unknown"
+
+	// 2. 프로세스 이름 조회
+	processName, err := proc.Name()
+	if err != nil {
+		LogWarn("Failed to get process name, using fallback", "pid", pid, "error", err)
+		processName = getProcessName(pid)
+		if processName == "" {
+			processName = "Unknown"
+		}
 	}
-	
-	return isValid, processName, nil
+
+	// 3. GPU 사용 여부는 참고용으로만 확인 (캐시 사용 가능)
+	isGPUActive, _ := verifyGPUProcess(pid)
+	if isGPUActive {
+		LogDebug("Process exists and is actively using GPU", "pid", pid, "name", processName)
+	} else {
+		LogDebug("Process exists but not actively using GPU (or cache outdated)", "pid", pid, "name", processName)
+	}
+
+	// 프로세스가 존재하면 유효함 (GPU 사용 여부와 무관)
+	// Kill 가능 여부는 프로세스 존재가 기준
+	return true, processName, nil
 }
 
 func verifyGPUProcess(pid int32) (bool, error) {

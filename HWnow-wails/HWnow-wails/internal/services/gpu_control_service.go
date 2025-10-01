@@ -152,15 +152,23 @@ func (g *GPUProcessControlService) createControlResult(pid int32, success bool, 
 
 // executeProcessControl executes a process control operation with proper error handling
 func (g *GPUProcessControlService) executeProcessControl(pid int32, operation string, priority string, controlFunc func(int32) error) *GPUProcessControlResult {
+	fmt.Printf("[DEBUG] executeProcessControl START - PID: %d, Operation: %s\n", pid, operation)
+
 	// Validate PID first
 	if err := g.validatePID(pid); err != nil {
+		fmt.Printf("[DEBUG] validatePID FAILED - PID: %d, Error: %v\n", pid, err)
 		return g.createControlResult(pid, false, err.Error(), operation, priority)
 	}
 
+	fmt.Printf("[DEBUG] PID validation passed - Calling controlFunc for PID: %d\n", pid)
+
 	// Execute the control function
 	if err := controlFunc(pid); err != nil {
+		fmt.Printf("[DEBUG] controlFunc FAILED - PID: %d, Error: %v\n", pid, err)
 		return g.createControlResult(pid, false, fmt.Sprintf("Failed to %s process: %v", operation, err), operation, priority)
 	}
+
+	fmt.Printf("[DEBUG] controlFunc SUCCESS - PID: %d\n", pid)
 
 	// Success
 	var message string
