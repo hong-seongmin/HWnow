@@ -70,6 +70,7 @@ interface SystemResourceState {
   setData: (type: WidgetType | string, value: number, info?: string) => void;
   setGPUProcesses: (processes: SystemResourceData['gpu_processes']) => void;
   clearGPUProcesses: () => void;
+  removeGPUProcess: (pid: number) => void;
   maxDataPoints: number;
 }
 
@@ -135,6 +136,14 @@ export const useSystemResourceStore = create<SystemResourceState>((set) => ({
       data: {
         ...state.data,
         gpu_processes: [],
+      },
+    }));
+  },
+  removeGPUProcess: (pid) => {
+    set((state) => ({
+      data: {
+        ...state.data,
+        gpu_processes: state.data.gpu_processes.filter(p => p.pid !== pid),
       },
     }));
   },
