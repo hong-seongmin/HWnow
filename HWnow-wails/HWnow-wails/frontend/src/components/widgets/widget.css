@@ -2059,13 +2059,13 @@
   text-overflow: ellipsis;
 }
 
-/* GPU ?�로?�스 ?�젯 UI 개선 */
+/* GPU 프로세스 위젯 UI 개선 - 프로세스 이름 2줄 표시 */
 .widget-gpu-process .process-list .process-item {
-  min-height: 3.5rem !important;
-  max-height: 3.5rem !important;
-  overflow: hidden;
+  min-height: 4.5rem !important;
+  max-height: none !important;
+  overflow: visible;
   padding: 0.75rem 0.5rem !important;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .widget-gpu-process .process-list .process-item > div[role="cell"] {
@@ -2073,17 +2073,20 @@
   overflow: hidden;
 }
 
-/* ?�로?�스 ?�름 개선 */
-.widget-gpu-process .process-list .process-item > div[role="cell"]:first-child {
+/* 프로세스 이름 셀 개선 - 2줄 공간 확보 */
+.widget-gpu-process .process-list .process-item > div[role="cell"]:nth-child(2) {
   flex: 1;
   min-width: 0;
   max-width: 100%;
   padding-right: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
 }
 
-/* GPU/메모�??�용�?컬럼 고정 ??*/
-.widget-gpu-process .process-list .process-item > div[role="cell"]:nth-child(2),
-.widget-gpu-process .process-list .process-item > div[role="cell"]:nth-child(3) {
+/* GPU/메모리 사용량 컬럼 고정 너비 */
+.widget-gpu-process .process-list .process-item > div[role="cell"]:nth-child(3),
+.widget-gpu-process .process-list .process-item > div[role="cell"]:nth-child(4) {
   flex-shrink: 0;
   min-width: 4rem;
   max-width: 4rem;

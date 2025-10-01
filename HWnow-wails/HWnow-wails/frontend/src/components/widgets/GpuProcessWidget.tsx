@@ -106,37 +106,7 @@ const getSafeGPUProcesses = (processes: unknown[]): GPUProcessData[] => {
     }));
 };
 
-// 프로세스 이름을 스마트하게 줄이는 함수
-const abbreviateProcessName = (name: string, maxLength: number = 25): string => {
-  if (!name || name.length <= maxLength) return name;
-  
-  // Windows 경로 패턴 감지
-  if (name.includes('\\') && (name.includes('Program Files') || name.includes('Users'))) {
-    const parts = name.split('\\');
-    const fileName = parts[parts.length - 1];
-    
-    // 파일명이 너무 긴 경우 확장자 유지하고 줄임
-    if (fileName.length > maxLength) {
-      const dotIndex = fileName.lastIndexOf('.');
-      if (dotIndex > 0) {
-        const nameWithoutExt = fileName.substring(0, dotIndex);
-        const extension = fileName.substring(dotIndex);
-        const maxNameLength = maxLength - extension.length - 3; // "..." 고려
-        return `${nameWithoutExt.substring(0, maxNameLength)}...${extension}`;
-      }
-    }
-    
-    // 경로 줄임: C:\Program Files\... → C:\...\filename.exe
-    if (parts.length > 3) {
-      return `C:\\...\\${fileName}`;
-    }
-    
-    return fileName;
-  }
-  
-  // 일반 텍스트 줄임
-  return `${name.substring(0, maxLength - 3)}...`;
-};
+// 프로세스 이름 생략 함수 제거 - 전체 경로 표시로 변경
 
 interface WidgetProps {
   widgetId: string;
@@ -499,7 +469,7 @@ const MAX_PROCESS_NAME_CHAR_LIMIT = 120;
     
     const processNames = sortedProcesses
       .filter(p => selectedProcesses.has(p.pid))
-      .map(p => `${abbreviateProcessName(p.name)} (PID: ${p.pid})`)
+      .map(p => `${p.name} (PID: ${p.pid})`)
       .join('\n');
     
     const confirmed = await confirmDialog({
@@ -980,9 +950,6 @@ const MAX_PROCESS_NAME_CHAR_LIMIT = 120;
           {/* Process List */}
           <div className="process-list" role="table" aria-label="GPU process list">
             {sortedProcesses.map((process, index) => {
-              const nameDisplay = process.name;
-              const isNameTruncated = false;
-
               return (
               <div 
                 key={`gpu-process-${process.pid}-${index}`}
@@ -1014,10 +981,14 @@ const MAX_PROCESS_NAME_CHAR_LIMIT = 120;
                       fontWeight: 500,
                       fontSize: '0.875rem',
                       color: 'var(--color-text-primary)',
-                      wordBreak: 'break-word',
+                      wordBreak: 'break-all',
                       lineHeight: '1.3',
                       cursor: 'default',
-                      whiteSpace: 'normal'
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
                     }}
                     title={`Full path: ${process.name}\n\nCommand: ${process.command}\nType: ${process.type}`}
                   >
@@ -1071,7 +1042,7 @@ const MAX_PROCESS_NAME_CHAR_LIMIT = 120;
                       handleTerminateProcess(process.pid, process.name);
                     }}
                     disabled={isTerminating.has(process.pid)}
-                    title={`Terminate ${abbreviateProcessName(process.name)} (PID: ${process.pid})`}
+                    title={`Terminate ${process.name} (PID: ${process.pid})`}
                     style={{
                       padding: 'var(--spacing-xs)',
                       backgroundColor: 'var(--color-danger)',
