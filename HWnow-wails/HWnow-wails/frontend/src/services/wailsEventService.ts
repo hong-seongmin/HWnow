@@ -368,23 +368,128 @@ export class WailsEventService {
   private createSystemInfoPoller(): () => Promise<void> {
     return async () => {
       if (!this.isRunning) return;
-      
+
       try {
         const systemInfo = await this.executeWithRetry(
           () => wailsApiService.getSystemInfo(),
           'GetSystemInfo'
         );
-        
+
         // Update store with system info (one-time data, no need for frequent updates)
         const { setData } = useSystemResourceStore.getState();
         setData('cpu_info', systemInfo.cpu_cores, systemInfo.cpu_model);
-        
+
       } catch (error) {
         this.handlePollingError('system_info', error);
       }
     };
   }
-  
+
+  private createRealTimeMetricsPoller(): () => Promise<void> {
+    return async () => {
+      if (!this.isRunning) return;
+
+      try {
+        const metrics = await this.executeWithRetry(
+          () => wailsApiService.getRealTimeMetrics(),
+          'GetRealTimeMetrics'
+        );
+
+        const { setData } = useSystemResourceStore.getState();
+
+        // CPU & Memory
+        setData('cpu', metrics.cpu_usage);
+        setData('ram', metrics.memory_usage);
+
+        // CPU cores
+        if (metrics.cpu_core_usage && Array.isArray(metrics.cpu_core_usage)) {
+          metrics.cpu_core_usage.forEach((coreUsage, index) => {
+            setData(`cpu_core_${index + 1}`, coreUsage);
+          });
+        }
+
+        // Disk
+        if (metrics.disk_usage) {
+          setData('disk_total', metrics.disk_usage.Total);
+          setData('disk_used', metrics.disk_usage.Used);
+          setData('disk_free', metrics.disk_usage.Free);
+          setData('disk_usage_percent', metrics.disk_usage.UsedPercent);
+        }
+
+        // I/O speeds
+        setData('disk_read', metrics.disk_read_speed || 0);
+        setData('disk_write', metrics.disk_write_speed || 0);
+        setData('net_sent', metrics.net_sent_speed || 0);
+        setData('net_recv', metrics.net_recv_speed || 0);
+
+      } catch (error) {
+        this.handlePollingError('realtime_metrics', error);
+      }
+    };
+  }
+
+  private createGPUInfoPoller(): () => Promise<void> {
+    return async () => {
+      if (!this.isRunning) return;
+
+      try {
+        const gpuInfo = await this.executeWithRetry(
+          () => wailsApiService.getGPUInfo(),
+          'GetGPUInfo'
+        );
+
+        const { setData } = useSystemResourceStore.getState();
+        setData('gpu_name', gpuInfo.name);
+        setData('gpu_usage', gpuInfo.usage);
+        setData('gpu_memory_used', gpuInfo.memory_used);
+        setData('gpu_memory_total', gpuInfo.memory_total);
+        setData('gpu_temperature', gpuInfo.temperature);
+        setData('gpu_power', gpuInfo.power);
+
+      } catch (error) {
+        this.handlePollingError('gpu_info', error);
+      }
+    };
+  }
+
+  private createGPUProcessPoller(): () => Promise<void> {
+    return async () => {
+      if (!this.isRunning) return;
+
+      try {
+        const processes = await this.executeWithRetry(
+          () => wailsApiService.getGPUProcesses(),
+          'GetGPUProcesses'
+        );
+
+        const { setGPUProcesses } = useSystemResourceStore.getState();
+        setGPUProcesses(processes);
+
+      } catch (error) {
+        this.handlePollingError('gpu_processes', error);
+      }
+    };
+  }
+
+  private createTopProcessPoller(): () => Promise<void> {
+    return async () => {
+      if (!this.isRunning) return;
+
+      try {
+        const topProcesses = await this.executeWithRetry(
+          () => wailsApiService.getTopProcesses(),
+          'GetTopProcesses'
+        );
+
+        const { setData } = useSystemResourceStore.getState();
+        setData('top_processes', topProcesses);
+
+      } catch (error) {
+        this.handlePollingError('top_processes', error);
+      }
+    };
+  }
+
   private startRealTimeMetricsPolling(): void {
     this.clearPolling('realtime_metrics');
     
@@ -630,12 +735,12 @@ export class WailsEventService {
       }
     };
     
-    // Phase 16.3.1: GPU 폴링 5분 간격으로 복구 (minimal CPU impact)
-    console.log('[WailsEvents] Starting minimal GPU process polling (5min interval)...');
-    
-    // 5분 간격으로 GPU 프로세스 폴링 활성화
+    // GPU process polling - 3초 간격 (실시간 모니터링)
+    console.log('[WailsEvents] Starting GPU process polling (3sec interval)...');
+
+    // 3초 간격으로 GPU 프로세스 폴링 활성화
     // Initial call은 startPollingJob 내부에서 자동으로 실행됨
-    this.startPollingJob('gpu_processes', pollGPUProcesses, 300000); // 5분 간격 (300초)
+    this.startPollingJob('gpu_processes', pollGPUProcesses, 3000); // 3초 간격
   }
   
   private startTopProcessPolling(): void {
