@@ -6,7 +6,7 @@ import { GpuProcessSettings } from './settings/GpuProcessSettings';
 import { useConfirmDialog } from '../common/ConfirmDialog';
 import { useToast } from '../../contexts/ToastContext';
 import { ButtonSpinner, InlineLoader } from '../common/LoadingSpinner';
-import { killGPUProcess, suspendGPUProcess, resumeGPUProcess, setGPUProcessPriority } from '../../services/wailsApiService';
+import { KillGPUProcess, SuspendGPUProcess, ResumeGPUProcess, SetGPUProcessPriority, ValidateGPUProcess } from '../../../wailsjs/go/main/App';
 import { onConnectionStatusChange, getWebSocketStatus, flushGPUProcessBatch } from '../../services/wailsEventService';
 import { GPU_PROCESS_PRESETS, type GPUProcessPresetType } from '../../utils/gpuProcessWidgetDefaults';
 import { performanceMonitor, type PerformanceMetrics } from '../../utils/performanceMonitor';
@@ -151,7 +151,8 @@ const GpuProcessWidgetContent: React.FC<WidgetProps> = ({ widgetId, onRemove, is
   const [isConnected, setIsConnected] = useState<boolean>(true);
   const [selectedProcesses, setSelectedProcesses] = useState<Set<number>>(new Set());
   const [isTerminating, setIsTerminating] = useState<Set<number>>(new Set());
-  
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   const [processNameCharacterLimit, setProcessNameCharacterLimit] = useState<number>(1000);
 
   const { showToast } = useToast();
@@ -340,8 +341,23 @@ const MAX_PROCESS_NAME_CHAR_LIMIT = 120;
     showToast('GPU 프로세스 위젯 설정이 저장되었습니다.', 'success');
   }, [widget, widgetId, showToast]);
   
-  const { confirmDialog } = useConfirmDialog();
-  
+  const { confirmDialog, ConfirmComponent } = useConfirmDialog();
+
+  // 수동 새로고침 핸들러
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await flushGPUProcessBatch();
+      showToast('GPU 프로세스 목록을 갱신했습니다', 'success');
+    } catch (error) {
+      console.error('Failed to refresh GPU processes:', error);
+      showToast('GPU 프로세스 목록 갱신 실패', 'error');
+    } finally {
+      // 최소 500ms 로딩 표시 (너무 빨리 사라지면 사용자가 인지 못함)
+      setTimeout(() => setIsRefreshing(false), 500);
+    }
+  }, [showToast]);
+
   // 정렬 헤더 클릭 핸들러
   const handleSort = useCallback((column: string) => {
     const { actions } = useDashboardStore.getState();
@@ -376,6 +392,31 @@ const MAX_PROCESS_NAME_CHAR_LIMIT = 120;
   
   // 프로세스 강제종료
   const handleTerminateProcess = useCallback(async (pid: number, processName: string) => {
+    console.log(`[DEBUG - HANDLER START] handleTerminateProcess called! PID: ${pid}, Name: ${processName}`);
+
+    // 1. PID 검증 먼저 수행
+    console.log(`[DEBUG - VALIDATION] About to call ValidateGPUProcess for PID: ${pid}`);
+    try {
+      const validation = await ValidateGPUProcess(pid);
+      console.log(`[DEBUG - VALIDATION] ValidateGPUProcess result:`, validation);
+      if (!validation.is_valid) {
+        console.log(`[DEBUG - VALIDATION] Process not valid - removing from list`);
+        // 즉시 목록에서 제거
+        useSystemResourceStore.getState().removeGPUProcess(pid);
+        showToast(`프로세스가 이미 종료되었습니다`, 'info');
+        return;
+      }
+      console.log(`[DEBUG - VALIDATION] Process is valid, proceeding to confirm dialog`);
+    } catch (error) {
+      console.error('[DEBUG - VALIDATION] Failed to validate process:', error);
+      // 검증 실패 시에도 목록에서 제거
+      useSystemResourceStore.getState().removeGPUProcess(pid);
+      showToast(`프로세스 검증 실패 - 목록에서 제거됨`, 'warning');
+      return;
+    }
+
+    // 2. 확인 다이얼로그 표시
+    console.log(`[DEBUG - DIALOG] Showing confirm dialog for PID: ${pid}`);
     const confirmed = await confirmDialog({
       title: 'Terminate GPU Process',
       message: `Are you sure you want to terminate process:\n\n${processName} (PID: ${pid})?\n\nThis action cannot be undone and may cause data loss.`,
@@ -383,26 +424,66 @@ const MAX_PROCESS_NAME_CHAR_LIMIT = 120;
       cancelText: 'Cancel',
       type: 'danger'
     });
-    
-    if (!confirmed) return;
-    
+
+    console.log(`[DEBUG - DIALOG] User confirmed: ${confirmed}`);
+    if (!confirmed) {
+      console.log(`[DEBUG - DIALOG] User cancelled, returning`);
+      return;
+    }
+
     setIsTerminating(prev => new Set([...prev, pid]));
-    
+
+    console.log(`[DEBUG] Calling KillGPUProcess - PID: ${pid}, Name: ${processName}`);
+
     try {
-      const result = await killGPUProcess(pid);
-      if (result.success) {
-        showToast(`Process ${processName} (PID: ${pid}) terminated successfully`, 'success');
+      const result = await KillGPUProcess(pid);
+      console.log(`[DEBUG] KillGPUProcess result:`, result);
+
+      if (result.Success) {
+        showToast(`프로세스 종료 성공: ${processName}`, 'success');
         setSelectedProcesses(prev => {
           const newSet = new Set(prev);
           newSet.delete(pid);
           return newSet;
         });
       } else {
-        showToast(`Failed to terminate process: ${result.message}`, 'error');
+        console.error(`[DEBUG] Kill failed - Success: false, Message:`, result.Message);
+        // 더 친화적이고 구체적인 오류 메시지
+        const msg = result.Message.toLowerCase();
+
+        if (msg.includes('not found') || msg.includes('code: 1001')) {
+          // 프로세스가 이미 종료된 경우 목록에서 제거
+          useSystemResourceStore.getState().removeGPUProcess(pid);
+          showToast(`프로세스가 이미 종료되었습니다`, 'info');
+        } else if (msg.includes('insufficient privileges') || msg.includes('administrator')) {
+          showToast(`⚠️ 관리자 권한 필요\n\n${processName}을(를) 종료하려면 HWnow를 관리자 권한으로 실행해주세요.`, 'error');
+        } else if (msg.includes('protected') || msg.includes('cannot be terminated')) {
+          showToast(`⚠️ 보호된 프로세스\n\n${processName}은(는) 시스템 또는 보안 프로그램에 의해 보호되어 종료할 수 없습니다.`, 'warning');
+        } else if (msg.includes('used by another')) {
+          showToast(`⚠️ 프로세스 사용 중\n\n${processName}이(가) 다른 애플리케이션에 의해 사용되고 있어 종료할 수 없습니다.`, 'warning');
+        } else if (msg.includes('access denied')) {
+          showToast(`⚠️ 접근 거부\n\n권한이 없거나 보호된 프로세스입니다. 관리자 권한으로 실행해주세요.`, 'error');
+        } else {
+          showToast(`종료 실패: ${result.Message}`, 'error');
+        }
       }
     } catch (error) {
-      console.error('Failed to terminate process:', error);
-      showToast(`Failed to terminate process: ${error}`, 'error');
+      console.error('[DEBUG] Exception caught in handleTerminateProcess:', error);
+      const errorMsg = String(error).toLowerCase();
+
+      if (errorMsg.includes('not found') || errorMsg.includes('code: 1001')) {
+        // 프로세스가 이미 종료된 경우 목록에서 제거
+        useSystemResourceStore.getState().removeGPUProcess(pid);
+        showToast(`프로세스가 이미 종료되었습니다`, 'info');
+      } else if (errorMsg.includes('insufficient privileges') || errorMsg.includes('administrator')) {
+        showToast(`⚠️ 관리자 권한 필요\n\nHWnow를 관리자 권한으로 실행해주세요.`, 'error');
+      } else if (errorMsg.includes('protected') || errorMsg.includes('cannot be terminated')) {
+        showToast(`⚠️ 보호된 프로세스\n\n시스템 또는 보안 프로그램에 의해 보호되어 종료할 수 없습니다.`, 'warning');
+      } else if (errorMsg.includes('access denied')) {
+        showToast(`⚠️ 접근 거부\n\n관리자 권한으로 실행해주세요.`, 'error');
+      } else {
+        showToast(`종료 실패: ${error}`, 'error');
+      }
     } finally {
       setIsTerminating(prev => {
         const newSet = new Set(prev);
@@ -439,8 +520,8 @@ const MAX_PROCESS_NAME_CHAR_LIMIT = 120;
     
     for (const pid of pidsToTerminate) {
       try {
-        const result = await killGPUProcess(pid);
-        if (result.success) {
+        const result = await KillGPUProcess(pid);
+        if (result.Success) {
           successCount++;
         } else {
           failCount++;
@@ -627,16 +708,41 @@ const MAX_PROCESS_NAME_CHAR_LIMIT = 120;
               </svg>
             </div>
             <span>GPU Processes</span>
-            <span className="process-count" style={{ 
-              marginLeft: 'var(--spacing-xs)', 
-              fontSize: '0.8rem', 
-              opacity: 0.7 
+            <span className="process-count" style={{
+              marginLeft: 'var(--spacing-xs)',
+              fontSize: '0.8rem',
+              opacity: 0.7
             }}>
               ({sortedProcesses.length})
             </span>
           </div>
-          
+
           <div className="widget-actions">
+            <button
+              className="widget-action-button"
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              title="Refresh GPU process list"
+              aria-label="Refresh GPU process list"
+              onMouseDown={(e) => e.stopPropagation()}
+              style={{ marginRight: 'var(--spacing-xs)' }}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+                style={{
+                  animation: isRefreshing ? 'spin 1s linear infinite' : 'none',
+                  transformOrigin: 'center'
+                }}
+              >
+                <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+              </svg>
+            </button>
             <button
               className="remove-widget-button"
               onClick={onRemove}
@@ -908,13 +1014,12 @@ const MAX_PROCESS_NAME_CHAR_LIMIT = 120;
                       fontWeight: 500,
                       fontSize: '0.875rem',
                       color: 'var(--color-text-primary)',
-                      overflow: 'visible',
-                      whiteSpace: 'normal',
                       wordBreak: 'break-word',
                       lineHeight: '1.3',
-                      cursor: 'default'
+                      cursor: 'default',
+                      whiteSpace: 'normal'
                     }}
-                    title={process.name.length > 25 ? `Full path: ${process.name}\n\nCommand: ${process.command}\nType: ${process.type}` : undefined}
+                    title={`Full path: ${process.name}\n\nCommand: ${process.command}\nType: ${process.type}`}
                   >
                     {process.name}
                   </div>
@@ -961,7 +1066,10 @@ const MAX_PROCESS_NAME_CHAR_LIMIT = 120;
                 </div>
                 <div role="cell" style={{ textAlign: 'center' }}>
                   <button
-                    onClick={() => handleTerminateProcess(process.pid, process.name)}
+                    onClick={() => {
+                      console.log(`[DEBUG - ONCLICK] Kill button clicked! PID: ${process.pid}, Name: ${process.name}, Disabled: ${isTerminating.has(process.pid)}`);
+                      handleTerminateProcess(process.pid, process.name);
+                    }}
                     disabled={isTerminating.has(process.pid)}
                     title={`Terminate ${abbreviateProcessName(process.name)} (PID: ${process.pid})`}
                     style={{
@@ -1005,6 +1113,8 @@ const MAX_PROCESS_NAME_CHAR_LIMIT = 120;
           <GpuProcessSettings widget={widget} />
         </SettingsModal>
       )}
+
+      {ConfirmComponent}
     </>
   );
 };

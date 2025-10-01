@@ -115,7 +115,7 @@ declare global {
           SuspendGPUProcess(pid: number): Promise<GPUProcessControlResponse>;
           ResumeGPUProcess(pid: number): Promise<GPUProcessControlResponse>;
           SetGPUProcessPriority(pid: number, priority: string): Promise<GPUProcessControlResponse>;
-          ValidateGPUProcess(pid: number): Promise<{ isValid: boolean; message: string; pid: number; processName?: string }>;
+          ValidateGPUProcess(pid: number): Promise<{ is_valid: boolean; message: string; pid: number; process_name?: string }>;
           SetGPUProcessMonitoring(enabled: boolean): Promise<void>;
           
           // Database methods
@@ -365,10 +365,13 @@ export class WailsApiService {
 
   // GPU process control methods
   public async killGPUProcess(pid: number): Promise<GPUProcessControlResponse> {
-    return this.executeWailsCall(
+    console.log(`[DEBUG - API] killGPUProcess called for PID: ${pid}`);
+    const result = await this.executeWailsCall(
       () => window.go.main.App.KillGPUProcess(pid),
       `KillGPUProcess(${pid})`
     );
+    console.log(`[DEBUG - API] killGPUProcess result for PID ${pid}:`, result);
+    return result;
   }
 
   public async suspendGPUProcess(pid: number): Promise<GPUProcessControlResponse> {
@@ -399,11 +402,14 @@ export class WailsApiService {
     );
   }
 
-  public async validateGPUProcess(pid: number): Promise<{ isValid: boolean; message: string; pid: number; processName?: string }> {
-    return this.executeWailsCall(
+  public async validateGPUProcess(pid: number): Promise<{ is_valid: boolean; message: string; pid: number; process_name?: string }> {
+    console.log(`[DEBUG - API] validateGPUProcess called for PID: ${pid}`);
+    const result = await this.executeWailsCall(
       () => window.go.main.App.ValidateGPUProcess(pid),
       `ValidateGPUProcess(${pid})`
     );
+    console.log(`[DEBUG - API] validateGPUProcess result for PID ${pid}:`, result);
+    return result;
   }
 
   // Database methods with enhanced validation and error handling
