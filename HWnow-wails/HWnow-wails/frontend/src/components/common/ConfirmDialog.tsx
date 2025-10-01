@@ -121,9 +121,12 @@ export const useConfirmDialog = () => {
     isOpen: boolean;
     title: string;
     message: string;
+    confirmText?: string;
+    cancelText?: string;
     type?: 'default' | 'danger' | 'warning';
     icon?: string;
     onConfirm?: () => void;
+    onCancel?: () => void;
   }>({
     isOpen: false,
     title: '',
@@ -133,6 +136,8 @@ export const useConfirmDialog = () => {
   const showConfirm = React.useCallback((config: {
     title: string;
     message: string;
+    confirmText?: string;
+    cancelText?: string;
     type?: 'default' | 'danger' | 'warning';
     icon?: string;
     onConfirm?: () => void;
@@ -154,19 +159,48 @@ export const useConfirmDialog = () => {
     hideConfirm();
   }, [dialogState.onConfirm, hideConfirm]);
 
+  const handleCancel = React.useCallback(() => {
+    if (dialogState.onCancel) {
+      dialogState.onCancel();
+    }
+    hideConfirm();
+  }, [dialogState.onCancel, hideConfirm]);
+
+  // Promise-based confirm dialog
+  const confirmDialog = React.useCallback((config: {
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    type?: 'default' | 'danger' | 'warning';
+    icon?: string;
+  }): Promise<boolean> => {
+    return new Promise((resolve) => {
+      setDialogState({
+        isOpen: true,
+        ...config,
+        onConfirm: () => resolve(true),
+        onCancel: () => resolve(false)
+      });
+    });
+  }, []);
+
   const ConfirmComponent = React.useMemo(() => (
     <ConfirmDialog
       isOpen={dialogState.isOpen}
-      onClose={hideConfirm}
+      onClose={handleCancel}
       onConfirm={handleConfirm}
       title={dialogState.title}
       message={dialogState.message}
+      confirmText={dialogState.confirmText}
+      cancelText={dialogState.cancelText}
       type={dialogState.type}
       icon={dialogState.icon}
     />
-  ), [dialogState, hideConfirm, handleConfirm]);
+  ), [dialogState, handleCancel, handleConfirm]);
 
   return {
+    confirmDialog,
     showConfirm,
     hideConfirm,
     ConfirmComponent
