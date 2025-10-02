@@ -26,27 +26,27 @@ A native desktop application built with **Go + React + TypeScript + Wails v2** t
   <img src="demo/hwnow-demo.gif" alt="HWnow demo — dashboard, add widget, CPU chart, drag & drop" />
 </p>
 
-<details>
+<details open>
   <summary><strong>Screenshots</strong> (click to expand)</summary>
 
 <table>
   <tr>
     <td>
-      <img src="demo/01-dashboard.png" alt="Empty dashboard — right-click to add widgets" />
+      <img src="demo/1. 초기화면.png" alt="Empty dashboard — right-click to add widgets" />
       <br/><sub><em>Empty dashboard — right-click to add widgets</em></sub>
     </td>
     <td>
-      <img src="demo/02-add-widget.png" alt="Add Widget menu — CPU / Memory / GPU / Network" />
+      <img src="demo/2. CPU Widget 추가.png" alt="Add Widget menu — CPU / Memory / GPU / Network" />
       <br/><sub><em>Add Widget — pick CPU / Memory / GPU / Network</em></sub>
     </td>
   </tr>
   <tr>
     <td>
-      <img src="demo/03-cpu-widget.png" alt="CPU Usage widget with model and cores info" />
+      <img src="demo/3. CPU Widget 화면.png" alt="CPU Usage widget with model and cores info" />
       <br/><sub><em>CPU Usage — model, cores/threads with live chart</em></sub>
     </td>
     <td>
-      <img src="demo/04-drag-drop.png" alt="Drag & drop, resize widget interactions" />
+      <img src="demo/4. Widget Drag&Drop 이동.png" alt="Drag & drop, resize widget interactions" />
       <br/><sub><em>Drag & Drop / Resize — customize your dashboard</em></sub>
     </td>
   </tr>
