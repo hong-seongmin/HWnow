@@ -23,7 +23,7 @@ A native desktop application built with **Go + React + TypeScript + Wails v2** t
 ## 🖼️ Demo
 
 <p align="center">
-  <img src="docs/demo/hwnow-demo.gif" alt="HWnow demo — dashboard, add widget, CPU chart, drag & drop" />
+  <img src="demo/hwnow-demo.gif" alt="HWnow demo — dashboard, add widget, CPU chart, drag & drop" />
 </p>
 
 <details>
@@ -32,21 +32,21 @@ A native desktop application built with **Go + React + TypeScript + Wails v2** t
 <table>
   <tr>
     <td>
-      <img src="docs/demo/01-dashboard.png" alt="Empty dashboard — right-click to add widgets" />
+      <img src="demo/01-dashboard.png" alt="Empty dashboard — right-click to add widgets" />
       <br/><sub><em>Empty dashboard — right-click to add widgets</em></sub>
     </td>
     <td>
-      <img src="docs/demo/02-add-widget.png" alt="Add Widget menu — CPU / Memory / GPU / Network" />
+      <img src="demo/02-add-widget.png" alt="Add Widget menu — CPU / Memory / GPU / Network" />
       <br/><sub><em>Add Widget — pick CPU / Memory / GPU / Network</em></sub>
     </td>
   </tr>
   <tr>
     <td>
-      <img src="docs/demo/03-cpu-widget.png" alt="CPU Usage widget with model and cores info" />
+      <img src="demo/03-cpu-widget.png" alt="CPU Usage widget with model and cores info" />
       <br/><sub><em>CPU Usage — model, cores/threads with live chart</em></sub>
     </td>
     <td>
-      <img src="docs/demo/04-drag-drop.png" alt="Drag & drop, resize widget interactions" />
+      <img src="demo/04-drag-drop.png" alt="Drag & drop, resize widget interactions" />
       <br/><sub><em>Drag & Drop / Resize — customize your dashboard</em></sub>
     </td>
   </tr>
